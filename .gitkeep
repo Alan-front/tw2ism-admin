@@ -1,0 +1,7 @@
+mkdir -p uploads
+touch uploads/.gitkeep
+
+
+# Carpeta de subidas (no subir imágenes/videos)
+uploads/*
+!uploads/.gitkeep

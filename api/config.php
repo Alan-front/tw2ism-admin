@@ -9,14 +9,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit(0);
 }
 
+$isLocal = $_SERVER['HTTP_HOST'] === 'localhost';
 
-$host = 'localhost';
-$dbname = 'tw2ism_db';
-$username = 'root';
-$password = '';
+$host = $isLocal ? 'localhost' : 'sql113.infinityfree.com';
+$db   = $isLocal ? 'tw2ism_db' : 'if0_41442610_ttw2ism_db';
+$user = $isLocal ? 'root' : 'if0_41442610';
+$pass = $isLocal ? '' : 'dwlNhHNdKUIm';
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $username, $password);
+    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch(PDOException $e) {

@@ -2,7 +2,7 @@
 require_once 'config.php';
 
 try {
-    $stmt = $pdo->query("SELECT * FROM media_items ORDER BY created_at DESC");
+    $stmt = $pdo->query("SELECT * FROM media_items ORDER BY sort_order ASC");
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // convertir valores booleanos

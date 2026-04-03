@@ -40,3 +40,8 @@ coverage/
 
 # Carpeta de subidas (no subir imágenes/videos)
 uploads/
+
+# Variables de entorno
+.env
+.env.production
+.env.development

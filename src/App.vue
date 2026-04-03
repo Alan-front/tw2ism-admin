@@ -24,18 +24,15 @@
               </div>
               <div class="card-body">
                 <div class="mb-3">
-                  <input 
+                  <input
                     ref="fileInput"
-                    type="file" 
+                    type="file"
                     accept="image/*,video/*,.gif"
                     multiple
                     class="form-control form-control-dark"
-                  >
+                  />
                 </div>
-                <button 
-                  @click="uploadFiles"
-                  class="btn btn-cyber w-100"
-                >
+                <button @click="uploadFiles" class="btn btn-cyber w-100">
                   <i class="fas fa-upload me-2"></i>
                   Subir Archivos
                 </button>
@@ -53,25 +50,25 @@
               </div>
               <div class="card-body">
                 <div class="mb-3">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     v-model="audioLink"
                     placeholder="Enlace de audio..."
                     class="form-control form-control-dark"
-                  >
+                  />
                 </div>
-                <button 
-                  @click="uploadAudio" 
+                <button
+                  @click="uploadAudio"
                   :disabled="isUploading"
                   class="btn btn-neon w-100"
                 >
                   <i class="fas fa-music me-2"></i>
-                  {{ isUploading ? 'Subiendo...' : 'Subir Audio' }}
+                  {{ isUploading ? "Subiendo..." : "Subir Audio" }}
                 </button>
-                
-                <audio 
-                  :src="currentAudio" 
-                  controls 
+
+                <audio
+                  :src="currentAudio"
+                  controls
                   v-if="currentAudio"
                   class="w-100 mt-3 audio-player"
                 ></audio>
@@ -80,143 +77,166 @@
           </div>
         </div>
 
-        <!-- Cards Grid -->
-        <div class="row g-3" v-if="mediaItems.length > 0">
-          <div 
-            v-for="item in mediaItems" 
-            :key="item.id"
-            class="col-12"
-          >
-            <div class="card card-cyber card-fixed-height">
-              <div class="row g-0 h-100">
-                <!-- seccion preview -->
-                <div class="col-md-3">
-                  <div class="preview-container h-100">
-                    <div class="preview-wrapper h-100">
-                      <img 
-                        v-if="(item.type === 'image' || item.type === 'gif') && item.filename"
-                        :src="getPreviewUrl(item.filename)" 
-                        :alt="item.title"
-                        class="card-img-left preview-img"
-                      >
-                      <video 
-                        v-else-if="item.type === 'video' && item.filename"
-                        :src="getPreviewUrl(item.filename)"
-                        class="card-img-left preview-video"
-                        controls
-                      />
-                      <div 
-                        v-else
-                        class="card-img-left no-image d-flex align-items-center justify-content-center"
-                      >
-                        <i class="fas fa-image fa-2x text-muted"></i>
+        <!-- Cards Grid con Drag & Drop -->
+        <draggable
+          v-if="mediaItems.length > 0"
+          v-model="mediaItems"
+          item-key="id"
+          handle=".drag-handle"
+          animation="200"
+          class="row g-3"
+          @end="saveOrder"
+        >
+          <template #item="{ element: item }">
+            <div class="col-12">
+              <div class="card card-cyber card-fixed-height">
+                <div class="row g-0 h-100">
+                  <!-- seccion preview -->
+                  <div class="col-md-3">
+                    <div class="preview-container h-100">
+                      <div class="preview-wrapper h-100">
+                        <img
+                          v-if="
+                            (item.type === 'image' || item.type === 'gif') &&
+                            item.filename
+                          "
+                          :src="getPreviewUrl(item.filename)"
+                          :alt="item.title"
+                          class="card-img-left preview-img"
+                        />
+                        <video
+                          v-else-if="item.type === 'video' && item.filename"
+                          :src="getPreviewUrl(item.filename)"
+                          class="card-img-left preview-video"
+                          controls
+                        />
+                        <div
+                          v-else
+                          class="card-img-left no-image d-flex align-items-center justify-content-center"
+                        >
+                          <i class="fas fa-image fa-2x text-muted"></i>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <!-- controls -->
-                    <div class="image-overlay">
-                      <input 
-                        :ref="`fileInput-${item.id}`"
-                        type="file" 
-                        accept="image/*,video/*,.gif"
-                        @change="replaceImage(item, $event)"
-                        style="display: none"
-                      >
-                      <button 
-                        @click="$refs[`fileInput-${item.id}`][0].click()"
-                        class="btn btn-outline-cyan btn-sm"
-                      >
-                        <i class="fas fa-edit"></i>
-                      </button>
+
+                      <!-- controls -->
+                      <div class="image-overlay">
+                        <input
+                          :id="`fileInput-${item.id}`"
+                          type="file"
+                          accept="image/*,video/*,.gif"
+                          @change="replaceImage(item, $event)"
+                          style="display: none"
+                        />
+                        <button
+                            @click="triggerFileInput(item.id)"
+                            class="btn btn-outline-cyan btn-sm"
+                          >
+                          <i class="fas fa-edit"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <!-- card  -->
-                <div class="col-md-9">
-                  <div class="card-body card-body-compact d-flex flex-column h-100">
-                    <!-- components form  -->
-                    <div class="fields-section mb-2">
-                      <div class="row g-2 mb-2">
-                        <div class="col-6">
-                          <input 
-                            v-model="item.title"
-                            placeholder="Título..."
-                            class="form-control form-control-dark form-control-sm"
-                          >
-                        </div>
-                        <div class="col-6">
-                          <input 
-                            v-model="item.link"
-                            placeholder="Link (opcional)..."
-                            class="form-control form-control-dark form-control-sm"
-                          >
-                        </div>
+                  <!-- card body -->
+                  <div class="col-md-9">
+                    <div
+                      class="card-body card-body-compact d-flex flex-column h-100"
+                    >
+                      <!-- drag handle -->
+                      <div class="drag-handle mb-2">
+                        <span class="drag-handle-icon">⠿</span>
+                        <span class="drag-handle-text">Arrastrar hacia arriba o abajo</span>
                       </div>
-                      
-                      <textarea 
-                        v-model="item.description"
-                        placeholder="Descripción..."
-                        rows="3"
-                        class="form-control form-control-dark form-control-sm mb-2"
-                      ></textarea>
-                    </div>
 
-                    <!-- checkboxes -->
-                    <div class="checkboxes-section mb-2">
-                      <div class="row g-2">
-                        <div class="col-6">
-                          <div class="form-check form-check-dark form-check-sm">
+                      <!-- fields -->
+                      <div class="fields-section mb-2">
+                        <div class="row g-2 mb-2">
+                          <div class="col-6">
                             <input
-                              type="checkbox"
-                              v-model="item.sound_enabled"
-                              :disabled="item.type !== 'video'"
-                              class="form-check-input form-check-input-sm"
-                              :id="`sound-${item.id}`"
+                              v-model="item.title"
+                              placeholder="Título..."
+                              class="form-control form-control-dark form-control-sm"
                             />
-                            <label class="form-check-label form-check-label-sm" :for="`sound-${item.id}`">
-                              <i class="fas fa-volume-up me-1"></i>
-                              Audio
-                            </label>
+                          </div>
+                          <div class="col-6">
+                            <input
+                              v-model="item.link"
+                              placeholder="Link (opcional)..."
+                              class="form-control form-control-dark form-control-sm"
+                            />
                           </div>
                         </div>
-                        <div class="col-6">
-                          <div class="form-check form-check-dark form-check-sm">
-                            <input 
-                              v-model="item.active"
-                              type="checkbox"
-                              class="form-check-input form-check-input-sm"
-                              :id="`active-${item.id}`"
-                            >
-                            <label class="form-check-label form-check-label-sm" :for="`active-${item.id}`">
-                              <i class="fas fa-eye me-1"></i>
-                              Activo
-                            </label>
+
+                        <textarea
+                          v-model="item.description"
+                          placeholder="Descripción..."
+                          rows="3"
+                          class="form-control form-control-dark form-control-sm mb-2"
+                        ></textarea>
+                      </div>
+
+                      <!-- checkboxes -->
+                      <div class="checkboxes-section mb-2">
+                        <div class="row g-2">
+                          <div class="col-6">
+                            <div class="form-check form-check-dark form-check-sm">
+                              <input
+                                type="checkbox"
+                                v-model="item.sound_enabled"
+                                :disabled="item.type !== 'video'"
+                                class="form-check-input form-check-input-sm"
+                                :id="`sound-${item.id}`"
+                              />
+                              <label
+                                class="form-check-label form-check-label-sm"
+                                :for="`sound-${item.id}`"
+                              >
+                                <i class="fas fa-volume-up me-1"></i>
+                                Audio
+                              </label>
+                            </div>
+                          </div>
+                          <div class="col-6">
+                            <div class="form-check form-check-dark form-check-sm">
+                              <input
+                                v-model="item.active"
+                                type="checkbox"
+                                class="form-check-input form-check-input-sm"
+                                :id="`active-${item.id}`"
+                              />
+                              <label
+                                class="form-check-label form-check-label-sm"
+                                :for="`active-${item.id}`"
+                              >
+                                <i class="fas fa-eye me-1"></i>
+                                Activo
+                              </label>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <!-- botons -->
-                    <div class="actions-section mt-auto">
-                      <div class="row g-2">
-                        <div class="col-6">
-                          <button 
-                            @click="updateItem(item)"
-                            class="btn btn-success-cyber btn-sm w-100"
-                          >
-                            <i class="fas fa-save me-1"></i>
-                            Actualizar
-                          </button>
-                        </div>
-                        <div class="col-6">
-                          <button 
-                            @click="deleteItem(item.id)"
-                            class="btn btn-danger-cyber btn-sm w-100"
-                          >
-                            <i class="fas fa-trash me-1"></i>
-                            Eliminar
-                          </button>
+                      <!-- botones -->
+                      <div class="actions-section mt-auto">
+                        <div class="row g-2">
+                          <div class="col-6">
+                            <button
+                              @click="updateItem(item)"
+                              class="btn btn-success-cyber btn-sm w-100"
+                            >
+                              <i class="fas fa-save me-1"></i>
+                              Actualizar
+                            </button>
+                          </div>
+                          <div class="col-6">
+                            <button
+                              @click="deleteItem(item.id)"
+                              class="btn btn-danger-cyber btn-sm w-100"
+                            >
+                              <i class="fas fa-trash me-1"></i>
+                              Eliminar
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -224,15 +244,20 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </template>
+        </draggable>
 
         <!-- empty -->
-        <div v-if="mediaItems.length === 0" class="empty-state text-center py-5">
+        <div
+          v-if="mediaItems.length === 0"
+          class="empty-state text-center py-5"
+        >
           <div class="mb-4">
             <i class="fas fa-folder-open fa-5x text-muted mb-3"></i>
             <h3 class="text-light">No hay archivos subidos aún</h3>
-            <p class="text-muted">Selecciona archivos para comenzar a gestionar tu contenido</p>
+            <p class="text-muted">
+              Selecciona archivos para comenzar a gestionar tu contenido
+            </p>
           </div>
         </div>
       </div>
@@ -241,238 +266,189 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted } from "vue";
+import draggable from "vuedraggable";
 
-// estado reactivo
-const mediaItems = ref([])
-const fileInput = ref(null)
+const API_BASE = import.meta.env.VITE_API_BASE;
+const UPLOADS_BASE = import.meta.env.VITE_UPLOADS_BASE;
 
+const mediaItems = ref([]);
+const fileInput = ref(null);
+const audioLink = ref("");
+const isUploading = ref(false);
+const currentAudio = ref("");
 
-const audioLink = ref('')
-const isUploading = ref(false)
-
-
-// funcion subir audio
 const uploadAudio = async () => {
   if (!audioLink.value.trim()) {
-    alert('Por favor ingresa un enlace válido')
-    return
+    alert("Por favor ingresa un enlace válido");
+    return;
   }
-
-  isUploading.value = true
-
+  isUploading.value = true;
   try {
-    const formData = new FormData()
-    formData.append('audio_url', audioLink.value.trim())
-
-    const response = await fetch('http://localhost/tw2ism-admin/api/upload_audio.php', {
-      method: 'POST',
-      body: formData
-    })
-
-    const result = await response.json()
-
+    const formData = new FormData();
+    formData.append("audio_url", audioLink.value.trim());
+    const response = await fetch(`${API_BASE}/upload_audio.php`, {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
     if (result.success) {
-      alert('Audio subido exitosamente')
-      audioLink.value = '' 
+      alert("Audio subido exitosamente");
+      audioLink.value = "";
     } else {
-      alert('Error: ' + result.message)
+      alert("Error: " + result.message);
     }
   } catch (error) {
-    alert('Error de conexión')
-    console.error(error)
+    alert("Error de conexión");
+    console.error(error);
   } finally {
-    isUploading.value = false
+    isUploading.value = false;
   }
-}
+};
 
-
-
-
-const currentAudio = ref('')
-
-
-
-onMounted(async () => {
- try {
-   const response = await fetch('http://localhost/tw2ism-admin/api/get_audio.php?id=1')
-   const result = await response.json()
-   
-   if (result.success && result.audio_url) {
-     currentAudio.value = result.audio_url;
-     console.log('Audio cargado:', currentAudio.value);
-   }
- } catch (error) {
-   console.error('Error cargando audio:', error)
- }
-})
-
-
-
-
-
-
-// manejo de archivos
-const uploadFiles = async () => {
-  const files = fileInput.value?.files
-  if (!files || files.length === 0) {
-    alert('Selecciona archivos primero')
-    return
-  }
+// Guarda el nuevo orden en la BD
+const saveOrder = async () => {
+  const orden = mediaItems.value.map((item) => item.id);
+  console.log('Orden enviado:', orden);
   
+  try {
+    const response = await fetch(`${API_BASE}/save_order.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orden }),
+    });
+    const result = await response.json();
+    console.log('Respuesta del server:', result);
+  } catch (error) {
+    console.error("Error guardando orden:", error);
+  }
+};
+
+const uploadFiles = async () => {
+  const files = fileInput.value?.files;
+  if (!files || files.length === 0) {
+    alert("Selecciona archivos primero");
+    return;
+  }
   for (const file of files) {
-    const formData = new FormData()
-    formData.append('file', file)
-    
+    const formData = new FormData();
+    formData.append("file", file);
     try {
-      const response = await fetch('http://localhost/tw2ism-admin/api/upload.php', {
-        method: 'POST',
-        body: formData
-      })
-      
-      const result = await response.json()
-      
+      const response = await fetch(`${API_BASE}/upload.php`, {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json();
       if (result.success) {
-        mediaItems.value.push(result.item)
+        mediaItems.value.push(result.item);
       } else {
-        alert('Error: ' + result.error)
+        alert("Error: " + result.error);
       }
     } catch (error) {
-      alert('Error subiendo archivo: ' + error.message)
+      alert("Error subiendo archivo: " + error.message);
     }
   }
-  
-  fileInput.value.value = ''
-}
+  fileInput.value.value = "";
+};
 
-// reemplazar imagen
 const replaceImage = async (item, event) => {
-  const file = event.target.files[0]
-  if (!file) return
-  
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('id', item.id)
-  
+  const file = event.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("id", item.id);
   try {
-    const response = await fetch('http://localhost/tw2ism-admin/api/replace.php', {
-      method: 'POST',
-      body: formData
-    })
-    
-    const result = await response.json()
-    
+    const response = await fetch(`${API_BASE}/replace.php`, {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
     if (result.success) {
-      // Aactualizar valores del item
-      item.filename = result.filename
-      item.type = result.type
-      // convertir a booleano
-      item.sound_enabled = Boolean(result.sound_enabled)
+      item.filename = result.filename;
+      item.type = result.type;
+      item.sound_enabled = Boolean(result.sound_enabled);
     } else {
-      alert('Error: ' + result.error)
+      alert("Error: " + result.error);
     }
   } catch (error) {
-    alert('Error reemplazando archivo: ' + error.message)
+    alert("Error reemplazando archivo: " + error.message);
   }
-  
-  event.target.value = ''
-}
+  event.target.value = "";
+};
 
-// borrar solo imagen
-// const deleteImageOnly = async (item) => {
-//   if (confirm('¿Borrar solo la imagen? Los datos se mantienen.')) {
-//     try {
-//       const response = await fetch(`http://localhost/tw2ism-admin/api/delete-image.php?id=${item.id}`, {
-//         method: 'POST'
-//       })
-      
-//       const result = await response.json()
-      
-//       if (result.success) {
-//         item.filename = ''
-//       } else {
-//         alert('Error: ' + result.error)
-//       }
-//     } catch (error) {
-//       alert('Error borrando imagen: ' + error.message)
-//     }
-//   }
-// }
-
-// URL de preview 
 const getPreviewUrl = (filename) => {
-  return `http://localhost/tw2ism-admin/uploads/media_scroll/${filename}`
-}
+  return `${UPLOADS_BASE}/${filename}`;
+};
 
-// actualizar item
 const updateItem = async (item) => {
   try {
-    const response = await fetch('http://localhost/tw2ism-admin/api/update.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(item)
-    })
-    
-    const result = await response.json()
-    
+    const response = await fetch(`${API_BASE}/update.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    const result = await response.json();
     if (!result.success) {
-      alert('Error actualizando: ' + result.error)
+      alert("Error actualizando: " + result.error);
     } else {
-      alert('Actualizado correctamente')
+      alert("Actualizado correctamente");
     }
   } catch (error) {
-    alert('Error actualizando: ' + error.message)
+    alert("Error actualizando: " + error.message);
   }
-}
+};
 
-// eliminar item
 const deleteItem = async (id) => {
-  if (confirm('¿Seguro que quieres eliminar este archivo?')) {
+  if (confirm("¿Seguro que quieres eliminar este archivo?")) {
     try {
-      const response = await fetch(`http://localhost/tw2ism-admin/api/delete.php?id=${id}`, {
-        method: 'DELETE'
-      })
-      
-      const result = await response.json()
-      
+      const response = await fetch(`${API_BASE}/delete.php?id=${id}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
       if (result.success) {
-        mediaItems.value = mediaItems.value.filter(item => item.id !== id)
+        mediaItems.value = mediaItems.value.filter((item) => item.id !== id);
       } else {
-        alert('Error eliminando: ' + result.error)
+        alert("Error eliminando: " + result.error);
       }
     } catch (error) {
-      alert('Error eliminando: ' + error.message)
+      alert("Error eliminando: " + error.message);
     }
   }
-}
+};
 
-// cargar items al montar
 onMounted(async () => {
   try {
-    const response = await fetch('http://localhost/tw2ism-admin/api/media.php')
-    const result = await response.json()
-    
-    if (result.success) {
-      mediaItems.value = result.items
-      console.log('Items cargados:', mediaItems.value)
-    } else {
-      console.error('Error cargando items:', result.error)
+    const response = await fetch(`${API_BASE}/get_audio.php?id=1`);
+    const result = await response.json();
+    if (result.success && result.audio_url) {
+      currentAudio.value = result.audio_url;
     }
   } catch (error) {
-    console.error('Error cargando items:', error)
+    console.error("Error cargando audio:", error);
   }
-})
+
+  try {
+    const response = await fetch(`${API_BASE}/media.php`);
+    const result = await response.json();
+    if (result.success) {
+      mediaItems.value = result.items;
+    } else {
+      console.error("Error cargando items:", result.error);
+    }
+  } catch (error) {
+    console.error("Error cargando items:", error);
+  }
+});
 
 
-
-
-
+// boton reemplazar
+const triggerFileInput = (id) => {
+  const ref = document.querySelector(`#fileInput-${id}`);
+  if (ref) ref.click();
+};
 
 
 </script>
-
 
 <style scoped>
 :root {
@@ -507,8 +483,6 @@ onMounted(async () => {
   box-shadow: 0 10px 30px rgba(0, 255, 255, 0.1);
 }
 
-/* cards */
-
 .card-cyber {
   background: linear-gradient(145deg, #1f2937, #111827);
   border: 1px solid rgba(51, 131, 131, 0.479);
@@ -516,23 +490,22 @@ onMounted(async () => {
   transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   padding-block: 8px;
 }
+
 .card-fixed-height {
-  height: auto; 
-  min-height: 230px; 
-}
-.preview-container, .preview-wrapper, .card-body-compact {
-  height: auto !important;
+  height: auto;
+  min-height: 230px;
 }
 
+.preview-container,
+.preview-wrapper,
+.card-body-compact {
+  height: auto !important;
+}
 
 .card-cyber:hover {
   transform: translateY(-4px);
   border-color: var(--cyber-cyan);
   box-shadow: 0 15px 30px rgba(0, 255, 255, 0.2);
-}
-
-.card-fixed-height {
-  height: 180px;
 }
 
 .preview-container {
@@ -590,6 +563,40 @@ onMounted(async () => {
 
 .actions-section {
   flex-shrink: 0;
+}
+
+/* drag handle */
+.drag-handle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: grab;
+  user-select: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  width: fit-content;
+  transition: background 0.2s;
+}
+
+.drag-handle:hover {
+  background: rgba(0, 255, 255, 0.1);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle-icon {
+  font-size: 18px;
+  color: var(--cyber-cyan);
+  line-height: 1;
+}
+
+.drag-handle-text {
+  font-size: 0.75rem;
+  color: rgba(156, 163, 175, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .form-control-dark {
@@ -744,7 +751,7 @@ onMounted(async () => {
   .card-fixed-height {
     height: 200px;
   }
-  
+
   .card-body-compact {
     padding: 0.75rem 0.5rem;
   }

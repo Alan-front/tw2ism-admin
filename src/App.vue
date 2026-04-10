@@ -1,759 +1,534 @@
 <template>
-  <div id="app" class="min-vh-100 bg-dark text-light">
-    <!-- header -->
-    <header class="bg-gradient-dark shadow-lg border-bottom border-cyan">
-      <div class="container py-4">
-        <h1 class="h2 mb-0 text-cyan fw-bold text-center">
-          <i class="fas fa-database me-3"></i>
-          TW2ISM FILE MANAGER
-        </h1>
+  <div id="app">
+    <header class="app-header">
+      <div class="header-inner">
+        <span class="header-logo">TW2ISM</span>
+        <span class="header-sub">FILE MANAGER</span>
+      </div>
+      <div class="header-actions">
+        <div class="upload-group">
+          <input v-model="audioLink" type="text" placeholder="URL de audio..." class="text-input" style="width:240px" />
+          <button class="btn-sm" @click="uploadAudio" :disabled="isUploading">{{ isUploading ? '...' : 'guardar audio' }}</button>
+          <audio v-if="currentAudio" :src="currentAudio" controls class="audio-player" />
+        </div>
+        <button class="btn-new-slide" @click="crearSlide">+ nuevo slide</button>
       </div>
     </header>
 
-    <main class="py-5">
-      <div class="container">
-        <!-- upload Section -->
-        <div class="row mb-5">
-          <div class="col-lg-6 mb-4">
-            <div class="card card-dark">
-              <div class="card-header bg-gradient-primary">
-                <h3 class="card-title mb-0">
-                  <i class="fas fa-cloud-upload-alt me-2"></i>
-                  Gestión de Archivos
-                </h3>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <input
-                    ref="fileInput"
-                    type="file"
-                    accept="image/*,video/*,.gif"
-                    multiple
-                    class="form-control form-control-dark"
-                  />
-                </div>
-                <button @click="uploadFiles" class="btn btn-cyber w-100">
-                  <i class="fas fa-upload me-2"></i>
-                  Subir Archivos
-                </button>
-              </div>
-            </div>
-          </div>
+    <main class="main">
+      <div v-if="slides.length === 0" class="empty">No hay slides. Creá uno.</div>
 
-          <div class="col-lg-6">
-            <div class="card card-dark">
-              <div class="card-header bg-gradient-purple">
-                <h3 class="card-title mb-0">
-                  <i class="fas fa-music me-2"></i>
-                  Audio
-                </h3>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <input
-                    type="text"
-                    v-model="audioLink"
-                    placeholder="Enlace de audio..."
-                    class="form-control form-control-dark"
-                  />
-                </div>
-                <button
-                  @click="uploadAudio"
-                  :disabled="isUploading"
-                  class="btn btn-neon w-100"
-                >
-                  <i class="fas fa-music me-2"></i>
-                  {{ isUploading ? "Subiendo..." : "Subir Audio" }}
-                </button>
+      <draggable
+        v-model="slides"
+        item-key="id"
+        handle=".drag-handle"
+        animation="150"
+        @end="saveOrder"
+      >
+        <template #item="{ element: slide }">
+          <div class="slide-card" :class="{ open: slide._open }">
 
-                <audio
-                  :src="currentAudio"
-                  controls
-                  v-if="currentAudio"
-                  class="w-100 mt-3 audio-player"
-                ></audio>
+            <!-- cabecera -->
+            <div class="slide-head">
+              <span class="drag-handle" title="Arrastrar para reordenar">⠿</span>
+              <div class="slide-thumb">
+                <img v-if="slide.background" :src="`${UPLOADS_BASE}/${slide.background}`" />
+                <span v-else class="no-bg">sin bg</span>
+              </div>
+              <div class="slide-info" @click="slide._open = !slide._open">
+                <span class="slide-title">Slide #{{ slide.orden }}</span>
+                <span class="slide-sub">{{ slide.elementos.length }} elemento(s) · {{ slide.height_vh }}vh</span>
+              </div>
+              <div class="slide-head-actions">
+                <label class="check-label">
+                  <input type="checkbox" v-model="slide.active" @change="updateSlide(slide)" />
+                  activo
+                </label>
+                <button class="btn-icon" @click="slide._open = !slide._open">{{ slide._open ? '▲' : '▼' }}</button>
+                <button class="btn-icon danger" @click="deleteSlide(slide.id)">✕</button>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Cards Grid con Drag & Drop -->
-        <draggable
-          v-if="mediaItems.length > 0"
-          v-model="mediaItems"
-          item-key="id"
-          handle=".drag-handle"
-          animation="200"
-          class="row g-3"
-          @end="saveOrder"
-        >
-          <template #item="{ element: item }">
-            <div class="col-12">
-              <div class="card card-cyber card-fixed-height">
-                <div class="row g-0 h-100">
-                  <!-- seccion preview -->
-                  <div class="col-md-3">
-                    <div class="preview-container h-100">
-                      <div class="preview-wrapper h-100">
-                        <img
-                          v-if="
-                            (item.type === 'image' || item.type === 'gif') &&
-                            item.filename
-                          "
-                          :src="getPreviewUrl(item.filename)"
-                          :alt="item.title"
-                          class="card-img-left preview-img"
-                        />
-                        <video
-                          v-else-if="item.type === 'video' && item.filename"
-                          :src="getPreviewUrl(item.filename)"
-                          class="card-img-left preview-video"
-                          controls
-                        />
-                        <div
-                          v-else
-                          class="card-img-left no-image d-flex align-items-center justify-content-center"
-                        >
-                          <i class="fas fa-image fa-2x text-muted"></i>
-                        </div>
-                      </div>
+            <!-- cuerpo -->
+            <div v-if="slide._open" class="slide-body">
 
-                      <!-- controls -->
-                      <div class="image-overlay">
-                        <input
-                          :id="`fileInput-${item.id}`"
-                          type="file"
-                          accept="image/*,video/*,.gif"
-                          @change="replaceImage(item, $event)"
-                          style="display: none"
-                        />
-                        <button
-                            @click="triggerFileInput(item.id)"
-                            class="btn btn-outline-cyan btn-sm"
-                          >
-                          <i class="fas fa-edit"></i>
-                        </button>
-                      </div>
-                    </div>
+              <!-- campos slide -->
+              <div class="slide-fields">
+                <div class="field-group">
+                  <label>Background</label>
+                  <div class="bg-row">
+                    <input type="text" v-model="slide.background" placeholder="archivo..." class="text-input sm" />
+                    <input :id="`bg-${slide.id}`" type="file" accept="image/*" style="display:none" @change="uploadBackground(slide, $event)" />
+                    <button class="btn-sm" @click="triggerInput(`bg-${slide.id}`)">subir</button>
                   </div>
+                </div>
+                <div class="field-group" style="max-width:110px">
+                  <label>Alto (vh)</label>
+                  <input type="number" v-model.number="slide.height_vh" class="text-input sm" min="100" step="50" />
+                </div>
+                <button class="btn-save" @click="updateSlide(slide)">guardar slide</button>
+              </div>
 
-                  <!-- card body -->
-                  <div class="col-md-9">
+              <!-- layout: canvas + lista elementos -->
+              <div class="layout-editor">
+
+                <!-- mini canvas -->
+                <div class="canvas-wrap">
+                  <div class="canvas-label">Vista previa · arrastrá los elementos</div>
+                  <div
+                    class="canvas"
+                    :style="{ height: canvasHeight(slide) + 'px' }"
+                    :id="`canvas-${slide.id}`"
+                    @dragover.prevent
+                    @drop="onCanvasDrop(slide, $event)"
+                  >
+                    <img v-if="slide.background" :src="`${UPLOADS_BASE}/${slide.background}`" class="canvas-bg" />
+                    <div v-else class="canvas-bg-empty">sin background</div>
+
                     <div
-                      class="card-body card-body-compact d-flex flex-column h-100"
+                      v-for="el in slide.elementos"
+                      :key="el.id"
+                      class="canvas-el"
+                      :style="canvasElStyle(el)"
+                      draggable="true"
+                      :title="el.title || el.filename"
+                      @dragstart="onElDragStart(el, slide, $event)"
+                      @click="slide._selectedEl = el"
+                      :class="{ selected: slide._selectedEl && slide._selectedEl.id === el.id }"
                     >
-                      <!-- drag handle -->
-                      <div class="drag-handle mb-2">
-                        <span class="drag-handle-icon">⠿</span>
-                        <span class="drag-handle-text">Arrastrar hacia arriba o abajo</span>
-                      </div>
+                      <img v-if="el.type === 'image' || el.type === 'gif'" :src="`${UPLOADS_BASE}/${el.filename}`" class="canvas-media" @dragstart.prevent />
+<video v-else-if="el.type === 'video'" :src="`${UPLOADS_BASE}/${el.filename}`" class="canvas-media" muted @dragstart.prevent />
+                      <span class="canvas-el-label">{{ el.title || el.type }}</span>
+                    </div>
 
-                      <!-- fields -->
-                      <div class="fields-section mb-2">
-                        <div class="row g-2 mb-2">
-                          <div class="col-6">
-                            <input
-                              v-model="item.title"
-                              placeholder="Título..."
-                              class="form-control form-control-dark form-control-sm"
-                            />
-                          </div>
-                          <div class="col-6">
-                            <input
-                              v-model="item.link"
-                              placeholder="Link (opcional)..."
-                              class="form-control form-control-dark form-control-sm"
-                            />
-                          </div>
-                        </div>
-
-                        <textarea
-                          v-model="item.description"
-                          placeholder="Descripción..."
-                          rows="3"
-                          class="form-control form-control-dark form-control-sm mb-2"
-                        ></textarea>
-                      </div>
-
-                      <!-- checkboxes -->
-                      <div class="checkboxes-section mb-2">
-                        <div class="row g-2">
-                          <div class="col-6">
-                            <div class="form-check form-check-dark form-check-sm">
-                              <input
-                                type="checkbox"
-                                v-model="item.sound_enabled"
-                                :disabled="item.type !== 'video'"
-                                class="form-check-input form-check-input-sm"
-                                :id="`sound-${item.id}`"
-                              />
-                              <label
-                                class="form-check-label form-check-label-sm"
-                                :for="`sound-${item.id}`"
-                              >
-                                <i class="fas fa-volume-up me-1"></i>
-                                Audio
-                              </label>
-                            </div>
-                          </div>
-                          <div class="col-6">
-                            <div class="form-check form-check-dark form-check-sm">
-                              <input
-                                v-model="item.active"
-                                type="checkbox"
-                                class="form-check-input form-check-input-sm"
-                                :id="`active-${item.id}`"
-                              />
-                              <label
-                                class="form-check-label form-check-label-sm"
-                                :for="`active-${item.id}`"
-                              >
-                                <i class="fas fa-eye me-1"></i>
-                                Activo
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- botones -->
-                      <div class="actions-section mt-auto">
-                        <div class="row g-2">
-                          <div class="col-6">
-                            <button
-                              @click="updateItem(item)"
-                              class="btn btn-success-cyber btn-sm w-100"
-                            >
-                              <i class="fas fa-save me-1"></i>
-                              Actualizar
-                            </button>
-                          </div>
-                          <div class="col-6">
-                            <button
-                              @click="deleteItem(item.id)"
-                              class="btn btn-danger-cyber btn-sm w-100"
-                            >
-                              <i class="fas fa-trash me-1"></i>
-                              Eliminar
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                    <div
+                      v-if="slide._nuevoEl && slide._nuevoEl.previewUrl"
+                      class="canvas-el nuevo-preview"
+                      :style="{ left: '25%', top: '25%', width: '35%' }"
+                    >
+                      <img v-if="slide._nuevoEl.type !== 'video'" :src="slide._nuevoEl.previewUrl" class="canvas-media" />
+                      <video v-else :src="slide._nuevoEl.previewUrl" class="canvas-media" muted />
+                      <span class="canvas-el-label nuevo">nuevo</span>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </template>
-        </draggable>
 
-        <!-- empty -->
-        <div
-          v-if="mediaItems.length === 0"
-          class="empty-state text-center py-5"
-        >
-          <div class="mb-4">
-            <i class="fas fa-folder-open fa-5x text-muted mb-3"></i>
-            <h3 class="text-light">No hay archivos subidos aún</h3>
-            <p class="text-muted">
-              Selecciona archivos para comenzar a gestionar tu contenido
-            </p>
+                <!-- panel de elementos -->
+                <div class="elements-panel">
+                  <div class="elementos-label">Elementos</div>
+
+                  <div
+                    v-for="el in slide.elementos"
+                    :key="el.id"
+                    class="elemento-row"
+                    :class="{ selected: slide._selectedEl && slide._selectedEl.id === el.id }"
+                    @click="slide._selectedEl = el"
+                  >
+                    <div class="el-preview-thumb">
+                      <img v-if="el.type === 'image' || el.type === 'gif'" :src="`${UPLOADS_BASE}/${el.filename}`" />
+                      <video v-else :src="`${UPLOADS_BASE}/${el.filename}`" muted />
+                      <span class="el-type-badge">{{ el.type }}</span>
+                      <input :id="`el-file-${el.id}`" type="file" accept="image/*,video/*,.gif" style="display:none" @change="replaceElemento(el, $event)" />
+                      <button class="btn-replace" @click.stop="triggerInput(`el-file-${el.id}`)">↺</button>
+                    </div>
+
+                    <div class="el-fields">
+                      <div class="el-row">
+                        <input v-model="el.title" type="text" placeholder="Título..." class="text-input sm" style="flex:1" />
+                        <input v-model="el.url" type="text" placeholder="URL..." class="text-input sm" style="flex:1" />
+                      </div>
+                      <textarea v-model="el.description" placeholder="Descripción..." rows="2" class="text-input sm textarea"></textarea>
+                      <div class="el-row coords">
+                        <span class="coord-label">X%</span>
+                        <input v-model.number="el.pos_x" type="number" class="text-input sm mini" min="0" max="100" @change="updateElemento(el)" />
+                        <span class="coord-label">Y%</span>
+                        <input v-model.number="el.pos_y" type="number" class="text-input sm mini" min="0" max="100" @change="updateElemento(el)" />
+                        <span class="coord-label">W%</span>
+                        <input v-model.number="el.width" type="number" class="text-input sm mini" min="1" max="100" @change="updateElemento(el)" />
+                        <span class="coord-label">R°</span>
+                        <input v-model.number="el.rotation" type="number" class="text-input sm mini" min="-180" max="180" @change="updateElemento(el)" />
+                        <span class="coord-label">Z</span>
+                        <input v-model.number="el.z_index" type="number" class="text-input sm mini" min="0" @change="updateElemento(el)" />
+                      </div>
+                      <div class="el-checks">
+                        <label v-if="el.type === 'video'" class="check-label">
+                          <input type="checkbox" v-model="el.sound_enabled" /> audio
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="el-actions">
+                      <button class="btn-save sm" @click.stop="updateElemento(el)">💾</button>
+                      <button class="btn-icon danger" @click.stop="deleteElemento(slide, el.id)">✕</button>
+                    </div>
+                  </div>
+
+                  <!-- nuevo elemento -->
+                  <div v-if="slide._nuevoEl" class="elemento-row nuevo">
+                    <div class="el-preview-thumb clickable" @click="triggerInput(`new-file-${slide.id}`)">
+                      <img v-if="slide._nuevoEl.previewUrl && slide._nuevoEl.type !== 'video'" :src="slide._nuevoEl.previewUrl" />
+                      <video v-else-if="slide._nuevoEl.previewUrl" :src="slide._nuevoEl.previewUrl" muted loop autoplay playsinline />
+                      <span v-else style="font-size:20px;color:#333">+</span>
+                      <span v-if="slide._nuevoEl.type" class="el-type-badge">{{ slide._nuevoEl.type }}</span>
+                      <input :id="`new-file-${slide.id}`" type="file" accept="image/*,video/*,.gif" style="display:none" @change="previewNuevoElemento(slide, $event)" />
+                    </div>
+                    <div class="el-fields">
+                      <div class="el-row">
+                        <input v-model="slide._nuevoEl.title" type="text" placeholder="Título..." class="text-input sm" style="flex:1" />
+                        <input v-model="slide._nuevoEl.url" type="text" placeholder="URL..." class="text-input sm" style="flex:1" />
+                      </div>
+                      <textarea v-model="slide._nuevoEl.description" placeholder="Descripción..." rows="2" class="text-input sm textarea"></textarea>
+                      <div class="el-row coords">
+                        <span class="coord-label">X%</span>
+                        <input v-model.number="slide._nuevoEl.pos_x" type="number" class="text-input sm mini" />
+                        <span class="coord-label">Y%</span>
+                        <input v-model.number="slide._nuevoEl.pos_y" type="number" class="text-input sm mini" />
+                        <span class="coord-label">W%</span>
+                        <input v-model.number="slide._nuevoEl.width" type="number" class="text-input sm mini" />
+                        <span class="coord-label">R°</span>
+                        <input v-model.number="slide._nuevoEl.rotation" type="number" class="text-input sm mini" />
+                        <span class="coord-label">Z</span>
+                        <input v-model.number="slide._nuevoEl.z_index" type="number" class="text-input sm mini" />
+                      </div>
+                      <div class="el-checks">
+                        <label v-if="slide._nuevoEl.type === 'video'" class="check-label">
+                          <input type="checkbox" v-model="slide._nuevoEl.sound_enabled" /> audio
+                        </label>
+                      </div>
+                    </div>
+                    <div class="el-actions">
+                      <button class="btn-save sm" @click="guardarNuevoElemento(slide)">💾</button>
+                      <button class="btn-icon" @click="slide._nuevoEl = null">✕</button>
+                    </div>
+                  </div>
+
+                  <button class="btn-add-el" @click="iniciarNuevoElemento(slide)">+ elemento</button>
+                </div>
+              </div>
+
+            </div>
           </div>
-        </div>
-      </div>
+        </template>
+      </draggable>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
-import draggable from "vuedraggable";
+import { ref, onMounted } from 'vue'
+import draggable from 'vuedraggable'
 
-const API_BASE = import.meta.env.VITE_API_BASE;
-const UPLOADS_BASE = import.meta.env.VITE_UPLOADS_BASE;
+const API_BASE = import.meta.env.VITE_API_BASE
+const UPLOADS_BASE = import.meta.env.VITE_UPLOADS_BASE
 
-const mediaItems = ref([]);
-const fileInput = ref(null);
-const audioLink = ref("");
-const isUploading = ref(false);
-const currentAudio = ref("");
+const slides = ref([])
+const audioLink = ref('')
+const isUploading = ref(false)
+
+const CANVAS_W = 320
+
+const triggerInput = (id) => document.getElementById(id)?.click()
+
+const canvasHeight = (slide) => Math.round(CANVAS_W * (slide.height_vh / 100) * 0.5625)
+
+const canvasElStyle = (el) => ({
+  left: `${el.pos_x}%`,
+  top: `${el.pos_y}%`,
+  width: `${el.width}%`,
+  transform: `rotate(${el.rotation}deg)`,
+  zIndex: el.z_index
+})
+
+let _draggingEl = null
+let _draggingSlide = null
+let _dragOffsetX = 0
+let _dragOffsetY = 0
+
+const onElDragStart = (el, slide, event) => {
+  _draggingEl = el
+  _draggingSlide = slide
+  const rect = event.target.getBoundingClientRect()
+  _dragOffsetX = event.clientX - rect.left
+  _dragOffsetY = event.clientY - rect.top
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+const onCanvasDrop = (slide, event) => {
+  if (!_draggingEl || _draggingSlide.id !== slide.id) return
+  const canvas = document.getElementById(`canvas-${slide.id}`)
+  const rect = canvas.getBoundingClientRect()
+  const x = ((event.clientX - rect.left - _dragOffsetX) / rect.width) * 100
+  const y = ((event.clientY - rect.top - _dragOffsetY) / rect.height) * 100
+  _draggingEl.pos_x = Math.max(0, Math.min(95, Math.round(x)))
+  _draggingEl.pos_y = Math.max(0, Math.min(95, Math.round(y)))
+  updateElemento(_draggingEl)
+  _draggingEl = null
+}
+
+const currentAudio = ref('')
+
+onMounted(() => {
+  cargarSlides()
+  cargarAudio()
+})
+
+
+
+const cargarAudio = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/get_audio.php`)
+    const data = await res.json()
+    if (data.success) currentAudio.value = data.audio_url
+  } catch (e) { console.error(e) }
+}
+
+async function cargarSlides() {
+  try {
+    const res = await fetch(`${API_BASE}/media.php`)
+    const data = await res.json()
+    if (data.success) {
+      slides.value = data.slides.map(s => ({ ...s, active: s.active ?? true, _open: false, _nuevoEl: null, _selectedEl: null }))
+    }
+  } catch (e) { alert('Error cargando: ' + e.message) }
+}
+
+const crearSlide = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/create_slide.php`, { method: 'POST' })
+    const data = await res.json()
+    if (data.success) slides.value.push({ ...data.slide, _open: true, _nuevoEl: null, _selectedEl: null })
+    else alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+}
+
+const updateSlide = async (slide) => {
+
+   // para que el usuario sepa que algo está pasando, ya que a veces tarda un poco por la generación de thumbnails
+  try {
+    await fetch(`${API_BASE}/update_slide.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: slide.id, background: slide.background, height_vh: slide.height_vh, active: slide.active ? 1 : 0 })
+    })
+    alert('Slide guardado.')
+
+  } catch (e) { alert('Error: ' + e.message) }
+}
+
+const deleteSlide = async (id) => {
+  if (!confirm('¿Eliminar este slide y todos sus elementos?')) return
+  try {
+    const res = await fetch(`${API_BASE}/delete_slide.php?id=${id}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.success) slides.value = slides.value.filter(s => s.id !== id)
+    else alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+}
+
+const saveOrder = async () => {
+  const orden = slides.value.map(s => s.id)
+  try {
+    await fetch(`${API_BASE}/save_order.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orden })
+    })
+  } catch (e) { console.error(e) }
+}
+
+const uploadBackground = async (slide, event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('slide_id', slide.id)
+  try {
+    const res = await fetch(`${API_BASE}/upload_background.php`, { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.success) { slide.background = data.filename; await updateSlide(slide) }
+    else alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+  event.target.value = ''
+}
+
+const updateElemento = async (el) => {
+  try {
+     // para que el usuario sepa que algo está pasando, ya que a veces tarda un poco
+    const res = await fetch(`${API_BASE}/update_elemento.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(el)
+    })
+    const data = await res.json()
+    if (!data.success) alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+}
+
+const deleteElemento = async (slide, id) => {
+  if (!confirm('¿Eliminar este elemento?')) return
+  try {
+    const res = await fetch(`${API_BASE}/delete_elemento.php?id=${id}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.success) slide.elementos = slide.elementos.filter(e => e.id !== id)
+    else alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+}
+
+const replaceElemento = async (el, event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('id', el.id)
+  try {
+    const res = await fetch(`${API_BASE}/replace_elemento.php`, { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.success) { el.filename = data.filename; el.type = data.type }
+    else alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+  event.target.value = ''
+}
+
+const iniciarNuevoElemento = (slide) => {
+  slide._nuevoEl = { file: null, previewUrl: null, type: null, title: '', url: '', description: '', pos_x: 25, pos_y: 25, width: 40, rotation: 0, z_index: 0, sound_enabled: false }
+}
+
+const previewNuevoElemento = (slide, event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  slide._nuevoEl.file = file
+  slide._nuevoEl.previewUrl = URL.createObjectURL(file)
+  if (file.type.startsWith('video')) slide._nuevoEl.type = 'video'
+  else if (file.name.endsWith('.gif') || file.type === 'image/gif') slide._nuevoEl.type = 'gif'
+  else slide._nuevoEl.type = 'image'
+}
+
+const guardarNuevoElemento = async (slide) => {
+  const el = slide._nuevoEl
+  if (!el.file) { alert('Seleccioná un archivo primero'); return }
+  alert('Subiendo elemento... esto puede tardar un poco')
+  const fd = new FormData()
+  fd.append('file', el.file)
+  fd.append('slide_id', slide.id)
+  fd.append('title', el.title)
+  fd.append('url', el.url)
+  fd.append('description', el.description)
+  fd.append('pos_x', el.pos_x)
+  fd.append('pos_y', el.pos_y)
+  fd.append('width', el.width)
+  fd.append('rotation', el.rotation)
+  fd.append('z_index', el.z_index)
+  fd.append('sound_enabled', el.sound_enabled ? 1 : 0)
+  try {
+    const res = await fetch(`${API_BASE}/create_elemento.php`, { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.success) { slide.elementos.push(data.elemento); slide._nuevoEl = null }
+    else alert('Error: ' + data.error)
+  } catch (e) { alert('Error: ' + e.message) }
+}
 
 const uploadAudio = async () => {
-  if (!audioLink.value.trim()) {
-    alert("Por favor ingresa un enlace válido");
-    return;
-  }
-  isUploading.value = true;
+  if (!audioLink.value.trim()) { alert('Ingresá un enlace'); return }
+  isUploading.value = true
   try {
-    const formData = new FormData();
-    formData.append("audio_url", audioLink.value.trim());
-    const response = await fetch(`${API_BASE}/upload_audio.php`, {
-      method: "POST",
-      body: formData,
-    });
-    const result = await response.json();
-    if (result.success) {
-      alert("Audio subido exitosamente");
-      audioLink.value = "";
-    } else {
-      alert("Error: " + result.message);
-    }
-  } catch (error) {
-    alert("Error de conexión");
-    console.error(error);
-  } finally {
-    isUploading.value = false;
-  }
-};
-
-// Guarda el nuevo orden en la BD
-const saveOrder = async () => {
-  const orden = mediaItems.value.map((item) => item.id);
-  console.log('Orden enviado:', orden);
-  
-  try {
-    const response = await fetch(`${API_BASE}/save_order.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orden }),
-    });
-    const result = await response.json();
-    console.log('Respuesta del server:', result);
-  } catch (error) {
-    console.error("Error guardando orden:", error);
-  }
-};
-
-const uploadFiles = async () => {
-  const files = fileInput.value?.files;
-  if (!files || files.length === 0) {
-    alert("Selecciona archivos primero");
-    return;
-  }
-  for (const file of files) {
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const response = await fetch(`${API_BASE}/upload.php`, {
-        method: "POST",
-        body: formData,
-      });
-      const result = await response.json();
-      if (result.success) {
-        mediaItems.value.push(result.item);
-      } else {
-        alert("Error: " + result.error);
-      }
-    } catch (error) {
-      alert("Error subiendo archivo: " + error.message);
-    }
-  }
-  fileInput.value.value = "";
-};
-
-const replaceImage = async (item, event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("id", item.id);
-  try {
-    const response = await fetch(`${API_BASE}/replace.php`, {
-      method: "POST",
-      body: formData,
-    });
-    const result = await response.json();
-    if (result.success) {
-      item.filename = result.filename;
-      item.type = result.type;
-      item.sound_enabled = Boolean(result.sound_enabled);
-    } else {
-      alert("Error: " + result.error);
-    }
-  } catch (error) {
-    alert("Error reemplazando archivo: " + error.message);
-  }
-  event.target.value = "";
-};
-
-const getPreviewUrl = (filename) => {
-  return `${UPLOADS_BASE}/${filename}`;
-};
-
-const updateItem = async (item) => {
-  try {
-    const response = await fetch(`${API_BASE}/update.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item),
-    });
-    const result = await response.json();
-    if (!result.success) {
-      alert("Error actualizando: " + result.error);
-    } else {
-      alert("Actualizado correctamente");
-    }
-  } catch (error) {
-    alert("Error actualizando: " + error.message);
-  }
-};
-
-const deleteItem = async (id) => {
-  if (confirm("¿Seguro que quieres eliminar este archivo?")) {
-    try {
-      const response = await fetch(`${API_BASE}/delete.php?id=${id}`, {
-        method: "DELETE",
-      });
-      const result = await response.json();
-      if (result.success) {
-        mediaItems.value = mediaItems.value.filter((item) => item.id !== id);
-      } else {
-        alert("Error eliminando: " + result.error);
-      }
-    } catch (error) {
-      alert("Error eliminando: " + error.message);
-    }
-  }
-};
-
-onMounted(async () => {
-  try {
-    const response = await fetch(`${API_BASE}/get_audio.php?id=1`);
-    const result = await response.json();
-    if (result.success && result.audio_url) {
-      currentAudio.value = result.audio_url;
-    }
-  } catch (error) {
-    console.error("Error cargando audio:", error);
-  }
-
-  try {
-    const response = await fetch(`${API_BASE}/media.php`);
-    const result = await response.json();
-    if (result.success) {
-      mediaItems.value = result.items;
-    } else {
-      console.error("Error cargando items:", result.error);
-    }
-  } catch (error) {
-    console.error("Error cargando items:", error);
-  }
-});
-
-
-// boton reemplazar
-const triggerFileInput = (id) => {
-  const ref = document.querySelector(`#fileInput-${id}`);
-  if (ref) ref.click();
-};
+    const fd = new FormData()
+    fd.append('audio_url', audioLink.value.trim())
+    const res = await fetch(`${API_BASE}/upload_audio.php`, { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.success) {
+      currentAudio.value = audioLink.value.trim()
+      alert('Audio guardado')
+      audioLink.value = ''
+    } else alert('Error: ' + data.message)
+  } catch (e) { alert('Error: ' + e.message) }
+  finally { isUploading.value = false }
+}
 
 
 </script>
 
 <style scoped>
-:root {
-  --cyber-cyan: #00ffff;
-  --cyber-purple: #8b5cf6;
-  --cyber-pink: #f472b6;
-  --dark-bg: #111827;
-  --darker-bg: #0f172a;
-  --card-bg: #1f2937;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+#app { min-height: 100vh; background: #0d0d0d; color: #e0e0e0; font-family: 'Courier New', monospace; font-size: 13px; }
+.app-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid #1e1e1e; background: #111; position: sticky; top: 0; z-index: 100; gap: 16px; flex-wrap: wrap; }
+.header-inner { display: flex; align-items: baseline; gap: 8px; }
+.header-logo { font-size: 14px; font-weight: bold; color: #00ffcc; letter-spacing: 2px; }
+.header-sub { font-size: 10px; color: #444; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.upload-group { display: flex; align-items: center; gap: 6px; }
+.btn-new-slide { background: #00ffcc; color: #000; border: none; padding: 6px 14px; font-family: inherit; font-size: 12px; font-weight: bold; cursor: pointer; border-radius: 3px; white-space: nowrap; }
+.btn-new-slide:hover { background: #00e6b8; }
+.main { padding: 14px 20px; }
+.empty { color: #333; text-align: center; padding: 60px; }
+.text-input { background: #1a1a1a; border: 1px solid #2a2a2a; color: #e0e0e0; padding: 5px 8px; font-family: inherit; font-size: 12px; border-radius: 3px; outline: none; width: 100%; }
+.text-input:focus { border-color: #00ffcc33; }
+.text-input.sm { font-size: 11px; padding: 3px 6px; }
+.text-input.mini { width: 46px; text-align: center; }
+.text-input.textarea { resize: vertical; }
+.btn-sm { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; padding: 4px 10px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px; white-space: nowrap; }
+.btn-sm:hover { border-color: #00ffcc33; color: #00ffcc; }
+.btn-save { background: #00ffcc0a; border: 1px solid #00ffcc22; color: #00ffcc; padding: 4px 10px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px; white-space: nowrap; }
+.btn-save:hover { background: #00ffcc18; }
+.btn-save.sm { padding: 3px 8px; }
+.btn-icon { background: none; border: 1px solid #1e1e1e; color: #444; width: 22px; height: 22px; font-size: 10px; cursor: pointer; border-radius: 3px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.btn-icon:hover { border-color: #333; color: #aaa; }
+.btn-icon.danger:hover { border-color: #ff4444; color: #ff4444; }
+.slide-card { border: 1px solid #1a1a1a; border-radius: 6px; overflow: hidden; background: #111; margin-bottom: 6px; transition: border-color 0.2s; }
+.slide-card.open { border-color: #00ffcc18; }
+.slide-head { display: flex; align-items: center; gap: 10px; padding: 7px 12px; user-select: none; }
+.slide-head:hover { background: #131313; }
+.drag-handle { color: #2a2a2a; font-size: 15px; cursor: grab; flex-shrink: 0; padding: 2px; }
+.drag-handle:hover { color: #00ffcc; }
+.slide-thumb { width: 54px; height: 34px; border-radius: 3px; background: #1a1a1a; border: 1px solid #1e1e1e; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.slide-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.no-bg { font-size: 9px; color: #2a2a2a; }
+.slide-info { flex: 1; cursor: pointer; }
+.slide-title { font-size: 12px; color: #bbb; display: block; }
+.slide-sub { font-size: 10px; color: #383838; }
+.slide-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.check-label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #444; cursor: pointer; }
+.check-label input { accent-color: #00ffcc; }
+.slide-body { border-top: 1px solid #1a1a1a; padding: 12px; }
+.slide-fields { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
+.field-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
+.field-group label { font-size: 10px; color: #383838; }
+.bg-row { display: flex; gap: 6px; }
+.layout-editor { display: flex; gap: 14px; align-items: flex-start; }
+.canvas-wrap { flex-shrink: 0; width: 320px; }
+.canvas-label { font-size: 10px; color: #333; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.canvas { width: 320px; position: relative; background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 4px; overflow: hidden; min-height: 180px; }
+.canvas-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4; pointer-events: none; }
+.canvas-bg-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #1e1e1e; }
+.canvas-el { position: absolute; cursor: grab; border: 1px solid transparent; border-radius: 2px; transition: border-color 0.15s; }
+.canvas-el:hover { border-color: #00ffcc55; }
+.canvas-el.selected { border-color: #00ffcc; }
+.canvas-el.nuevo-preview { border: 1px dashed #00ffcc55; cursor: default; opacity: 0.7; }
+.canvas-media { width: 100%; height: auto; display: block; object-fit: contain; pointer-events: none; }
+.canvas-el-label { position: absolute; bottom: 100%; left: 0; font-size: 8px; color: #00ffcc; background: #000000cc; padding: 1px 4px; border-radius: 2px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+.canvas-el:hover .canvas-el-label, .canvas-el.selected .canvas-el-label { opacity: 1; }
+.canvas-el-label.nuevo { opacity: 1; color: #ffaa00; }
+.elements-panel { flex: 1; min-width: 0; }
+.elementos-label { font-size: 10px; color: #333; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+.elemento-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 5px; cursor: pointer; transition: border-color 0.15s; }
+.elemento-row:hover { border-color: #00ffcc11; }
+.elemento-row.selected { border-color: #00ffcc33; }
+.elemento-row.nuevo { border-color: #00ffcc18; cursor: default; }
+.el-preview-thumb { width: 64px; height: 50px; flex-shrink: 0; border-radius: 3px; background: #1a1a1a; border: 1px solid #1e1e1e; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+.el-preview-thumb.clickable { cursor: pointer; border-style: dashed; }
+.el-preview-thumb.clickable:hover { border-color: #00ffcc44; }
+.el-preview-thumb img, .el-preview-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.el-type-badge { position: absolute; bottom: 2px; right: 2px; font-size: 8px; background: #000000bb; color: #00ffcc; padding: 1px 3px; border-radius: 2px; }
+.btn-replace { position: absolute; top: 2px; right: 2px; background: #000000bb; border: none; color: #888; font-size: 10px; cursor: pointer; padding: 1px 3px; border-radius: 2px; opacity: 0; transition: opacity 0.15s; }
+.el-preview-thumb:hover .btn-replace { opacity: 1; }
+.el-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.el-row { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.el-row.coords { gap: 3px; }
+.coord-label { font-size: 9px; color: #333; white-space: nowrap; }
+.el-checks { display: flex; gap: 8px; }
+.el-actions { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+.btn-add-el { width: 100%; background: none; border: 1px dashed #1e1e1e; color: #333; padding: 6px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px; margin-top: 4px; transition: all 0.2s; }
+.btn-add-el:hover { border-color: #00ffcc22; color: #00ffcc; }
+@media (max-width: 800px) { .layout-editor { flex-direction: column; } .canvas-wrap, .canvas { width: 100%; } }
 
-.bg-gradient-dark {
-  background: linear-gradient(135deg, var(--darker-bg) 0%, var(--dark-bg) 100%);
-}
-
-.bg-gradient-primary {
-  background: linear-gradient(135deg, var(--cyber-cyan), #0ea5e9);
-}
-
-.bg-gradient-purple {
-  background: linear-gradient(135deg, var(--cyber-purple), #a855f7);
-}
-
-.card-dark {
-  background: var(--card-bg);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.3s ease;
-}
-
-.card-dark:hover {
-  border-color: var(--cyber-cyan);
-  box-shadow: 0 10px 30px rgba(0, 255, 255, 0.1);
-}
-
-.card-cyber {
-  background: linear-gradient(145deg, #1f2937, #111827);
-  border: 1px solid rgba(51, 131, 131, 0.479);
-  overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  padding-block: 8px;
-}
-
-.card-fixed-height {
-  height: auto;
-  min-height: 230px;
-}
-
-.preview-container,
-.preview-wrapper,
-.card-body-compact {
-  height: auto !important;
-}
-
-.card-cyber:hover {
-  transform: translateY(-4px);
-  border-color: var(--cyber-cyan);
-  box-shadow: 0 15px 30px rgba(0, 255, 255, 0.2);
-}
-
-.preview-container {
-  position: relative;
-  overflow: hidden;
-  height: 100%;
-}
-
-.preview-wrapper {
-  position: relative;
-  height: 100%;
-}
-
-.card-img-left {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: all 0.3s ease;
-  filter: brightness(0.9);
-}
-
-.card-cyber:hover .card-img-left {
-  filter: brightness(1.1);
-  transform: scale(1.05);
-}
-
-.no-image {
-  height: 100%;
-  background: linear-gradient(45deg, #374151, #1f2937);
-}
-
-.image-overlay {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.card-cyber:hover .image-overlay {
-  opacity: 1;
-}
-
-.card-body-compact {
-  padding: 1rem 0.75rem;
-}
-
-.fields-section {
-  flex: 1;
-}
-
-.checkboxes-section {
-  flex-shrink: 0;
-}
-
-.actions-section {
-  flex-shrink: 0;
-}
-
-/* drag handle */
-.drag-handle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: grab;
-  user-select: none;
-  padding: 2px 6px;
-  border-radius: 4px;
-  width: fit-content;
-  transition: background 0.2s;
-}
-
-.drag-handle:hover {
-  background: rgba(0, 255, 255, 0.1);
-}
-
-.drag-handle:active {
-  cursor: grabbing;
-}
-
-.drag-handle-icon {
-  font-size: 18px;
-  color: var(--cyber-cyan);
-  line-height: 1;
-}
-
-.drag-handle-text {
-  font-size: 0.75rem;
-  color: rgba(156, 163, 175, 0.8);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.form-control-dark {
-  background: rgba(17, 24, 39, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f9fafb;
-  transition: all 0.3s ease;
-}
-
-.form-control-dark:focus {
-  background: rgba(17, 24, 39, 1);
-  border-color: var(--cyber-cyan);
-  box-shadow: 0 0 0 0.2rem rgba(0, 255, 255, 0.25);
-  color: #f9fafb;
-}
-
-.form-control-dark::placeholder {
-  color: rgba(156, 163, 175, 0.7);
-}
-
-.form-control-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.875rem;
-}
-
-.form-check-dark .form-check-input {
-  background-color: rgba(17, 24, 39, 0.8);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.form-check-dark .form-check-input:checked {
-  background-color: var(--cyber-cyan);
-  border-color: var(--cyber-cyan);
-  color: #000;
-}
-
-.form-check-dark .form-check-input:focus {
-  box-shadow: 0 0 0 0.25rem rgba(0, 255, 255, 0.25);
-}
-
-.form-check-sm {
-  margin-bottom: 0;
-}
-
-.form-check-input-sm {
-  width: 1em;
-  height: 1em;
-}
-
-.form-check-label-sm {
-  font-size: 0.875rem;
-  margin-bottom: 0;
-  color: aqua;
-}
-
-.btn-cyber {
-  background: linear-gradient(45deg, var(--cyber-cyan), #0ea5e9);
-  border: none;
-  color: #000;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-}
-
-.btn-cyber:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 255, 255, 0.4);
-  color: #000;
-}
-
-.btn-neon {
-  background: linear-gradient(45deg, var(--cyber-purple), #a855f7);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-}
-
-.btn-neon:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(139, 92, 246, 0.4);
-  color: #fff;
-}
-
-.btn-success-cyber {
-  background: linear-gradient(45deg, #10b981, #059669);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.btn-success-cyber:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
-  color: #fff;
-}
-
-.btn-danger-cyber {
-  background: linear-gradient(45deg, #ef4444, #dc2626);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.btn-danger-cyber:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
-  color: #fff;
-}
-
-.btn-outline-cyan {
-  border-color: var(--cyber-cyan);
-  color: var(--cyber-cyan);
-  background: rgba(0, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-}
-
-.btn-outline-cyan:hover {
-  background: var(--cyber-cyan);
-  color: #000;
-  border-color: var(--cyber-cyan);
-}
-
-.btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.875rem;
-}
-
-.text-cyan {
-  color: var(--cyber-cyan) !important;
-}
-
-.border-cyan {
-  border-color: rgba(0, 255, 255, 0.3) !important;
-}
-
-.audio-player {
-  filter: sepia(100%) saturate(200%) hue-rotate(180deg) brightness(0.8);
-  border-radius: 8px;
-}
-
-.empty-state {
-  padding: 4rem 2rem;
-}
-
-@media (max-width: 768px) {
-  .card-fixed-height {
-    height: 200px;
-  }
-
-  .card-body-compact {
-    padding: 0.75rem 0.5rem;
-  }
-}
+.audio-player { height: 32px; filter: invert(1); border-radius: 3px; }
 </style>

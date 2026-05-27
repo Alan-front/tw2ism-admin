@@ -6,7 +6,7 @@ try {
 
     $file = $_FILES['file'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $allowed = ['jpg','jpeg','png','gif','mp4','webm','mov'];
+    $allowed = ['jpg','jpeg','png','gif','mp4','webm','mov','svg'];
     if (!in_array($ext, $allowed)) throw new Exception('Tipo no permitido');
 
     $filename = uniqid() . '_' . time() . '.' . $ext;

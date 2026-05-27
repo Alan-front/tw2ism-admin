@@ -13,6 +13,9 @@
         </div>
         <button class="btn-new-slide" @click="crearSlide">+ nuevo slide</button>
       </div>
+
+      
+
     </header>
 
     <main class="main">
@@ -45,7 +48,7 @@
                   activo
                 </label>
                 <button class="btn-icon" @click="slide._open = !slide._open">{{ slide._open ? '▲' : '▼' }}</button>
-                <button class="btn-icon danger" @click="deleteSlide(slide.id)">✕</button>
+                <button class="btn-icon danger" @click="deleteSlide(slide.id)"><i class="fa-solid fa-delete-left"></i></button>
               </div>
             </div>
 
@@ -57,16 +60,16 @@
                 <div class="field-group">
                   <label>Background</label>
                   <div class="bg-row">
-                    <input type="text" v-model="slide.background" placeholder="archivo..." class="text-input sm" />
+                    <input type="text" v-model="slide.background" placeholder="archivo..." class="text-input sm" @blur="updateSlide(slide)" />
                     <input :id="`bg-${slide.id}`" type="file" accept="image/*" style="display:none" @change="uploadBackground(slide, $event)" />
-                    <button class="btn-sm" @click="triggerInput(`bg-${slide.id}`)">subir</button>
+                    <button class="btn-sm" @click="triggerInput(`bg-${slide.id}`)"><i class="fa-solid fa-upload"></i></button>
                   </div>
                 </div>
                 <div class="field-group" style="max-width:110px">
                   <label>Alto (vh)</label>
-                  <input type="number" v-model.number="slide.height_vh" class="text-input sm" min="100" step="50" />
+                  <input type="number" v-model.number="slide.height_vh" class="text-input sm" min="100" step="50" @blur="updateSlide(slide)" />
                 </div>
-                <button class="btn-save" @click="updateSlide(slide)">guardar slide</button>
+                
               </div>
 
               <!-- layout: canvas + lista elementos -->
@@ -74,7 +77,7 @@
 
                 <!-- mini canvas -->
                 <div class="canvas-wrap">
-                  <div class="canvas-label">Vista previa · arrastrá los elementos</div>
+                  <div class="canvas-label">Vista previa · arrastra los elementos</div>
                   <div
                     class="canvas"
                     :style="{ height: canvasHeight(slide) + 'px' }"
@@ -129,7 +132,7 @@
                       <video v-else :src="`${UPLOADS_BASE}/${el.filename}`" muted />
                       <span class="el-type-badge">{{ el.type }}</span>
                       <input :id="`el-file-${el.id}`" type="file" accept="image/*,video/*,.gif" style="display:none" @change="replaceElemento(el, $event)" />
-                      <button class="btn-replace" @click.stop="triggerInput(`el-file-${el.id}`)">↺</button>
+                      
                     </div>
 
                     <div class="el-fields">
@@ -158,8 +161,8 @@
                     </div>
 
                     <div class="el-actions">
-                      <button class="btn-save sm" @click.stop="updateElemento(el)">💾</button>
-                      <button class="btn-icon danger" @click.stop="deleteElemento(slide, el.id)">✕</button>
+                      
+                      <button class="btn-icon danger" @click.stop="deleteElemento(slide, el.id)"><i class="fa-solid fa-delete-left"></i></button>
                     </div>
                   </div>
 
@@ -170,7 +173,7 @@
                       <video v-else-if="slide._nuevoEl.previewUrl" :src="slide._nuevoEl.previewUrl" muted loop autoplay playsinline />
                       <span v-else style="font-size:20px;color:#333">+</span>
                       <span v-if="slide._nuevoEl.type" class="el-type-badge">{{ slide._nuevoEl.type }}</span>
-                      <input :id="`new-file-${slide.id}`" type="file" accept="image/*,video/*,.gif" style="display:none" @change="previewNuevoElemento(slide, $event)" />
+                      <input :id="`new-file-${slide.id}`" type="file" accept="image/*,video/*,.gif,.svg,image/svg+xml" style="display:none" @change="previewNuevoElemento(slide, $event)" />
                     </div>
                     <div class="el-fields">
                       <div class="el-row">
@@ -197,12 +200,12 @@
                       </div>
                     </div>
                     <div class="el-actions">
-                      <button class="btn-save sm" @click="guardarNuevoElemento(slide)">💾</button>
-                      <button class="btn-icon" @click="slide._nuevoEl = null">✕</button>
+                      
+                      <button class="btn-icon danger" @click="slide._nuevoEl = null"><i class="fa-solid fa-delete-left"></i></button>
                     </div>
                   </div>
 
-                  <button class="btn-add-el" @click="iniciarNuevoElemento(slide)">+ elemento</button>
+                  <button class="btn-add-el" @click="iniciarNuevoElemento(slide)"><i class="fa-solid fa-plus"></i> elemento</button>
                 </div>
               </div>
 
@@ -212,6 +215,14 @@
       </draggable>
     </main>
   </div>
+
+  <!-- toast -->
+       
+      <div class="toast-container">
+  <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type">{{ t.message }}</div>
+</div>
+
+
 </template>
 
 <script setup>
@@ -274,6 +285,8 @@ onMounted(() => {
 
 
 
+
+
 const cargarAudio = async () => {
   try {
     const res = await fetch(`${API_BASE}/get_audio.php`)
@@ -308,9 +321,15 @@ const updateSlide = async (slide) => {
     await fetch(`${API_BASE}/update_slide.php`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: slide.id, background: slide.background, height_vh: slide.height_vh, active: slide.active ? 1 : 0 })
-    })
-    alert('Slide guardado.')
+      body: JSON.stringify({ 
+  id: slide.id, 
+  background: slide.background, 
+  height_vh: slide.height_vh, 
+  active: slide.active ? 1 : 0,
+  orden: slide.orden
+})
+     })
+    toast('Slide guardado')
 
   } catch (e) { alert('Error: ' + e.message) }
 }
@@ -393,7 +412,7 @@ const iniciarNuevoElemento = (slide) => {
   slide._nuevoEl = { file: null, previewUrl: null, type: null, title: '', url: '', description: '', pos_x: 25, pos_y: 25, width: 40, rotation: 0, z_index: 0, sound_enabled: false }
 }
 
-const previewNuevoElemento = (slide, event) => {
+const previewNuevoElemento = async (slide, event) => {
   const file = event.target.files[0]
   if (!file) return
   slide._nuevoEl.file = file
@@ -401,12 +420,13 @@ const previewNuevoElemento = (slide, event) => {
   if (file.type.startsWith('video')) slide._nuevoEl.type = 'video'
   else if (file.name.endsWith('.gif') || file.type === 'image/gif') slide._nuevoEl.type = 'gif'
   else slide._nuevoEl.type = 'image'
+  await guardarNuevoElemento(slide)
 }
 
 const guardarNuevoElemento = async (slide) => {
   const el = slide._nuevoEl
   if (!el.file) { alert('Seleccioná un archivo primero'); return }
-  alert('Subiendo elemento... esto puede tardar un poco')
+  toast('Subiendo...', 'info')
   const fd = new FormData()
   fd.append('file', el.file)
   fd.append('slide_id', slide.id)
@@ -422,7 +442,12 @@ const guardarNuevoElemento = async (slide) => {
   try {
     const res = await fetch(`${API_BASE}/create_elemento.php`, { method: 'POST', body: fd })
     const data = await res.json()
-    if (data.success) { slide.elementos.push(data.elemento); slide._nuevoEl = null }
+    if (data.success) { 
+  const nuevo = { ...data.elemento, title: el.title, url: el.url, description: el.description }
+  slide.elementos.push(nuevo)
+  await updateElemento(nuevo)
+  slide._nuevoEl = null 
+}
     else alert('Error: ' + data.error)
   } catch (e) { alert('Error: ' + e.message) }
 }
@@ -437,11 +462,21 @@ const uploadAudio = async () => {
     const data = await res.json()
     if (data.success) {
       currentAudio.value = audioLink.value.trim()
-      alert('Audio guardado')
+      toast('Audio guardado')
       audioLink.value = ''
     } else alert('Error: ' + data.message)
   } catch (e) { alert('Error: ' + e.message) }
   finally { isUploading.value = false }
+}
+
+
+// TOAST
+
+const toasts = ref([])
+const toast = (message, type = 'success') => {
+  const id = Date.now()
+  toasts.value.push({ id, message, type })
+  setTimeout(() => toasts.value = toasts.value.filter(t => t.id !== id), 2500)
 }
 
 
@@ -462,8 +497,8 @@ const uploadAudio = async () => {
 .empty { color: #333; text-align: center; padding: 60px; }
 .text-input { background: #1a1a1a; border: 1px solid #2a2a2a; color: #e0e0e0; padding: 5px 8px; font-family: inherit; font-size: 12px; border-radius: 3px; outline: none; width: 100%; }
 .text-input:focus { border-color: #00ffcc33; }
-.text-input.sm { font-size: 11px; padding: 3px 6px; }
-.text-input.mini { width: 46px; text-align: center; }
+.text-input.sm { font-size: 16px; padding: 4px 8px; }
+.text-input.mini { width: 56px; text-align: center; }
 .text-input.textarea { resize: vertical; }
 .btn-sm { background: #1a1a1a; border: 1px solid #2a2a2a; color: #888; padding: 4px 10px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px; white-space: nowrap; }
 .btn-sm:hover { border-color: #00ffcc33; color: #00ffcc; }
@@ -486,7 +521,7 @@ const uploadAudio = async () => {
 .slide-title { font-size: 12px; color: #bbb; display: block; }
 .slide-sub { font-size: 10px; color: #383838; }
 .slide-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.check-label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #444; cursor: pointer; }
+.check-label { display: flex; align-items: center; gap: 4px; font-size: 16px; color: #76b3a7c0; cursor: pointer; }
 .check-label input { accent-color: #00ffcc; }
 .slide-body { border-top: 1px solid #1a1a1a; padding: 12px; }
 .slide-fields { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; flex-wrap: wrap; }
@@ -495,7 +530,7 @@ const uploadAudio = async () => {
 .bg-row { display: flex; gap: 6px; }
 .layout-editor { display: flex; gap: 14px; align-items: flex-start; }
 .canvas-wrap { flex-shrink: 0; width: 320px; }
-.canvas-label { font-size: 10px; color: #333; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.canvas-label { font-size: 12px; color: #a1f0e5b0; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
 .canvas { width: 320px; position: relative; background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 4px; overflow: hidden; min-height: 180px; }
 .canvas-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4; pointer-events: none; }
 .canvas-bg-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #1e1e1e; }
@@ -507,28 +542,63 @@ const uploadAudio = async () => {
 .canvas-el-label { position: absolute; bottom: 100%; left: 0; font-size: 8px; color: #00ffcc; background: #000000cc; padding: 1px 4px; border-radius: 2px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; pointer-events: none; }
 .canvas-el:hover .canvas-el-label, .canvas-el.selected .canvas-el-label { opacity: 1; }
 .canvas-el-label.nuevo { opacity: 1; color: #ffaa00; }
-.elements-panel { flex: 1; min-width: 0; }
-.elementos-label { font-size: 10px; color: #333; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
-.elemento-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 5px; cursor: pointer; transition: border-color 0.15s; }
+.elements-panel { flex: 1; min-width: 0; 
+max-height: 520px; 
+overflow-y: auto; }
+.elementos-label { font-size: 16px; color: #8feeceb0; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; 
+}
+.elemento-row { display: flex; gap: 8px; align-items: flex-start; padding: 7px; background: #0d0d0d; border: 1px solid #1a1a1a; border-radius: 4px; margin-bottom: 5px; cursor: pointer; transition: border-color 0.15s; 
+}
 .elemento-row:hover { border-color: #00ffcc11; }
 .elemento-row.selected { border-color: #00ffcc33; }
 .elemento-row.nuevo { border-color: #00ffcc18; cursor: default; }
-.el-preview-thumb { width: 64px; height: 50px; flex-shrink: 0; border-radius: 3px; background: #1a1a1a; border: 1px solid #1e1e1e; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+.el-preview-thumb { width: 128px; height: 100px; flex-shrink: 0; border-radius: 3px; background: #b4acac73; border: 1px solid #1e1e1e; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
 .el-preview-thumb.clickable { cursor: pointer; border-style: dashed; }
 .el-preview-thumb.clickable:hover { border-color: #00ffcc44; }
 .el-preview-thumb img, .el-preview-thumb video { width: 100%; height: 100%; object-fit: cover; }
 .el-type-badge { position: absolute; bottom: 2px; right: 2px; font-size: 8px; background: #000000bb; color: #00ffcc; padding: 1px 3px; border-radius: 2px; }
 .btn-replace { position: absolute; top: 2px; right: 2px; background: #000000bb; border: none; color: #888; font-size: 10px; cursor: pointer; padding: 1px 3px; border-radius: 2px; opacity: 0; transition: opacity 0.15s; }
 .el-preview-thumb:hover .btn-replace { opacity: 1; }
-.el-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.el-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+ }
 .el-row { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
-.el-row.coords { gap: 3px; }
-.coord-label { font-size: 9px; color: #333; white-space: nowrap; }
+.el-row.coords { gap: 4px; }
+.coord-label { font-size: 16px; color: #97ddcc79; white-space: nowrap; }
 .el-checks { display: flex; gap: 8px; }
 .el-actions { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
 .btn-add-el { width: 100%; background: none; border: 1px dashed #1e1e1e; color: #333; padding: 6px; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 3px; margin-top: 4px; transition: all 0.2s; }
 .btn-add-el:hover { border-color: #00ffcc22; color: #00ffcc; }
+
+.btn-save {
+  padding: 8px 16px;
+  font-size: 16px;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+}
+
+.btn-sm{
+  padding: 6px 12px;
+  font-size: 16px;
+}
+
+.btn-add-el {
+  padding: 10px;
+  font-size: 16px;
+}
+
 @media (max-width: 800px) { .layout-editor { flex-direction: column; } .canvas-wrap, .canvas { width: 100%; } }
 
+
+
 .audio-player { height: 32px; filter: invert(1); border-radius: 3px; }
+
+/* TOAST */
+
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast { background: #222; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 13px; opacity: 0.95; }
+.toast.info { background: #1a5276; }
 </style>

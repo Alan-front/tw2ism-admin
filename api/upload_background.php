@@ -11,7 +11,7 @@ try {
     $slide = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($slide && !empty($slide['background'])) {
-        $old = 'C:/xampp/htdocs/tw2ism-admin/uploads/media_scroll/' . trim($slide['background']);
+        $old = $uploadsPath . trim($slide['background']);
         if (file_exists($old)) {
 
         
@@ -34,7 +34,7 @@ try {
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $filename = uniqid() . '_' . time() . '.' . $ext;
-    $dest = 'C:/xampp/htdocs/tw2ism-admin/uploads/media_scroll/' . $filename;
+    $dest = $uploadsPath . $filename;
 
     if (!move_uploaded_file($file['tmp_name'], $dest)) {
         throw new Exception('Error al mover archivo');

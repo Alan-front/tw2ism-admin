@@ -13,14 +13,14 @@ try {
     $stmt->execute([$id]);
     $el = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($el && $el['filename']) {
-        $old = 'C:/xampp/htdocs/tw2ism-admin/uploads/media_scroll/' . $el['filename'];
+        $old = $uploadsPath . $el['filename'];
         if (file_exists($old)) unlink($old);
     }
 
     // guardar nuevo
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $filename = uniqid() . '_' . time() . '.' . $ext;
-    $dest = 'C:/xampp/htdocs/tw2ism-admin/uploads/media_scroll/' . $filename;
+    $dest = $uploadsPath . $filename;
     if (!move_uploaded_file($file['tmp_name'], $dest)) throw new Exception('Error al mover archivo');
 
     if ($ext === 'mp4' || $ext === 'webm' || $ext === 'mov') $type = 'video';

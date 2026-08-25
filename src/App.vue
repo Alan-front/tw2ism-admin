@@ -4,7 +4,7 @@
       <div class="header-inner">
         <span class="header-logo">TW2ISM</span>
         <span class="header-sub">FILE MANAGER</span>
-        <p>total altura: <span id="totalAltura">{{ alturaTotal }}</span></p>
+        <p>total altura: <span id="totalAltura" class="total-altura" :class="{ excedido: alturaTotal > 180 }">{{ alturaTotal }}</span></p>
       </div>
       <div class="header-actions">
         <div class="upload-group">
@@ -160,19 +160,21 @@
                           slide._selectedEl && slide._selectedEl.id === el.id,
                       }"
                     >
-                      <img
-                        v-if="el.type === 'image' || el.type === 'gif'"
-                        :src="`${UPLOADS_BASE}/${el.filename}`"
-                        class="canvas-media"
-                        @dragstart.prevent
-                      />
                       <video
-                        v-else-if="el.type === 'video'"
-                        :src="`${UPLOADS_BASE}/${el.filename}`"
-                        class="canvas-media"
-                        muted
-                        @dragstart.prevent
-                      />
+  v-if="el.type === 'video'"
+  :src="`${UPLOADS_BASE}/${el.filename}#t=0.1`"
+  class="canvas-media"
+  preload="metadata"
+  muted
+  playsinline
+  @dragstart.prevent
+/>
+<img
+  v-else
+  :src="`${UPLOADS_BASE}/${el.filename}`"
+  class="canvas-media"
+  @dragstart.prevent
+/>
                       <span class="canvas-el-label">{{
                         el.title || el.type
                       }}</span>
@@ -214,24 +216,33 @@
                     @click="slide._selectedEl = el"
                   >
                     <div class="el-preview-thumb">
-                      <img
-                        v-if="el.type === 'image' || el.type === 'gif'"
-                        :src="`${UPLOADS_BASE}/${el.filename}`"
-                      />
-                      <video
-                        v-else
-                        :src="`${UPLOADS_BASE}/${el.filename}`"
-                        muted
-                      />
-                      <span class="el-type-badge">{{ el.type }}</span>
-                      <input
-                        :id="`el-file-${el.id}`"
-                        type="file"
-                        accept="image/*,video/*,.gif,.svg,image/svg+xml,.avif,.webp"
-                        style="display: none"
-                        @change="replaceElemento(el, $event)"
-                      />
-                    </div>
+  <video
+    v-if="el.type === 'video'"
+    :src="`${UPLOADS_BASE}/${el.filename}#t=0.1`"
+    preload="metadata"
+    muted
+    playsinline
+  />
+  <img
+    v-else
+    :src="`${UPLOADS_BASE}/${el.filename}`"
+  />
+  <span class="el-type-badge">{{ el.type }}</span>
+  <button
+    class="btn-replace"
+    @click.stop="triggerInput(`el-file-${el.id}`)"
+    title="Reemplazar archivo"
+  >
+    <i class="fa-solid fa-rotate"></i>
+  </button>
+  <input
+    :id="`el-file-${el.id}`"
+    type="file"
+    accept="image/*,video/*,.gif,.svg,image/svg+xml,.avif,.webp"
+    style="display: none"
+    @change="replaceElemento(el, $event)"
+  />
+</div>
 
                     <div class="el-fields">
                       <div class="el-row">
@@ -1401,5 +1412,21 @@ const toast = (message, type = "success") => {
 }
 .toast.info {
   background: #1a5276;
+}
+
+.total-altura {
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: padding 0.2s;
+}
+.total-altura.excedido {
+  padding: 4px 10px;
+  background: #ff4444;
+  color: #fff;
+  animation: pulse-excedido 1s infinite;
+}
+@keyframes pulse-excedido {
+  0%, 100% { box-shadow: 0 0 0 0 #ff444488; }
+  50% { box-shadow: 0 0 0 6px #ff444400; }
 }
 </style>

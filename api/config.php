@@ -27,5 +27,5 @@ try {
 
 $uploadsPath = $isLocal
     ? 'C:/xampp/htdocs/tw2ism-admin/uploads/media_scroll/'
-    : $_SERVER['DOCUMENT_ROOT'] . '/uploads/';
+    : $_SERVER['DOCUMENT_ROOT'] . '/uploads/media_scroll/';
 ?>

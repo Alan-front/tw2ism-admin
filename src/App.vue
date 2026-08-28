@@ -51,7 +51,9 @@
               <div class="slide-thumb">
                 <img
                   v-if="slide.background"
-                  :src="`${UPLOADS_BASE}/${slide.background}`"
+                  :src="cargarMedia(`${UPLOADS_BASE}/${slide.background}`)"
+                  @load="logMediaOk(`miniatura slide #${slide.orden}`, slide.background)"
+                  @error="logMediaErr(`miniatura slide #${slide.orden}`, slide.background)"
                 />
                 <span v-else class="no-bg">sin bg</span>
               </div>
@@ -120,6 +122,7 @@
                     class="text-input sm"
                     min="100"
                     step="50"
+                    @change="clampAltura(slide)"
                     @blur="updateSlide(slide)"
                   />
                 </div>
@@ -141,8 +144,10 @@
                   >
                     <img
                       v-if="slide.background"
-                      :src="`${UPLOADS_BASE}/${slide.background}`"
+                      :src="cargarMedia(`${UPLOADS_BASE}/${slide.background}`)"
                       class="canvas-bg"
+                      @load="logMediaOk(`background slide #${slide.orden}`, slide.background)"
+                      @error="logMediaErr(`background slide #${slide.orden}`, slide.background)"
                     />
                     <div v-else class="canvas-bg-empty">sin background</div>
 
@@ -162,18 +167,22 @@
                     >
                       <video
   v-if="el.type === 'video'"
-  :src="`${UPLOADS_BASE}/${el.filename}#t=0.1`"
+  :src="cargarMedia(`${UPLOADS_BASE}/${el.filename}`, `${UPLOADS_BASE}/${el.filename}#t=0.1`)"
   class="canvas-media"
   preload="metadata"
   muted
   playsinline
   @dragstart.prevent
+  @loadeddata="logMediaOk(`canvas slide #${slide.orden}`, el.filename)"
+  @error="logMediaErr(`canvas slide #${slide.orden}`, el.filename)"
 />
 <img
   v-else
-  :src="`${UPLOADS_BASE}/${el.filename}`"
+  :src="cargarMedia(`${UPLOADS_BASE}/${el.filename}`)"
   class="canvas-media"
   @dragstart.prevent
+  @load="logMediaOk(`canvas slide #${slide.orden}`, el.filename)"
+  @error="logMediaErr(`canvas slide #${slide.orden}`, el.filename)"
 />
                       <span class="canvas-el-label">{{
                         el.title || el.type
@@ -218,14 +227,18 @@
                     <div class="el-preview-thumb">
   <video
     v-if="el.type === 'video'"
-    :src="`${UPLOADS_BASE}/${el.filename}#t=0.1`"
+    :src="cargarMedia(`${UPLOADS_BASE}/${el.filename}`, `${UPLOADS_BASE}/${el.filename}#t=0.1`)"
     preload="metadata"
     muted
     playsinline
+    @loadeddata="logMediaOk(`miniatura elemento slide #${slide.orden}`, el.filename)"
+    @error="logMediaErr(`miniatura elemento slide #${slide.orden}`, el.filename)"
   />
   <img
     v-else
-    :src="`${UPLOADS_BASE}/${el.filename}`"
+    :src="cargarMedia(`${UPLOADS_BASE}/${el.filename}`)"
+    @load="logMediaOk(`miniatura elemento slide #${slide.orden}`, el.filename)"
+    @error="logMediaErr(`miniatura elemento slide #${slide.orden}`, el.filename)"
   />
   <span class="el-type-badge">{{ el.type }}</span>
   <button
@@ -474,7 +487,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, reactive, onMounted, computed } from "vue";
 import draggable from "vuedraggable";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
@@ -498,6 +511,202 @@ const canvasElStyle = (el) => ({
   transform: `rotate(${el.rotation}deg)`,
   zIndex: el.z_index,
 });
+
+// ============================================================
+// LOG DE MEDIA — solo consola, nada de UI ni localStorage.
+// Se dispara con @load/@loadeddata y @error de cada <img>/<video>
+// que carga un archivo de UPLOADS_BASE.
+//
+// AMPLIADO para diagnosticar el problema de producción (menos de
+// 7 slides cargan su media, el resto nunca):
+//   - Cada resultado (ok o error) queda guardado en
+//     window.tw2ismMediaLog, así se puede revisar TODO el historial
+//     en cualquier momento desde la consola:
+//       window.tw2ismMediaLog                    -> todo
+//       window.tw2ismMediaLog.filter(x => !x.ok)  -> solo los que fallaron
+//   - Cada línea de consola muestra un contador acumulado (ok/error),
+//     para ver de un vistazo a partir de qué slide/elemento empiezan
+//     a fallar los archivos.
+//   - Cuando algo falla, el evento @error del navegador NO dice por
+//     qué (no distingue 404 de 403 de bloqueo de WAF/hosting o de
+//     una caída de red). Por eso, además, disparamos un fetch de
+//     diagnóstico a la misma URL solo para leer el status HTTP real
+//     y dejarlo en consola (esto no cambia nada de lo que ve el
+//     usuario, es puramente para depurar).
+// ============================================================
+window.tw2ismMediaLog = window.tw2ismMediaLog || [];
+let _mediaOkCount = 0;
+let _mediaErrCount = 0;
+
+// ============================================================
+// COLA DE CARGA DE MEDIA — para evitar el bloqueo por ráfaga en
+// producción (probablemente lo que corta la carga a partir de cierto
+// slide: el navegador/hosting ve muchos requests de imágenes/videos
+// disparados al mismo tiempo y empieza a rechazar/cortar el resto).
+//
+// En vez de poner el archivo real directo en :src (lo que hace que el
+// navegador dispare TODOS los requests apenas se pintan los slides),
+// cada <img>/<video> pide un "turno" acá. Mientras no le toca, no
+// tiene src (no se dispara ningún request). Se procesan de a
+// MAX_CONCURRENTES a la vez, y entre turno y turno se espera un
+// delay aleatorio (para no liberar varios de golpe en el mismo
+// instante). Si ves en los logs que igual se corta, bajá
+// MAX_CONCURRENTES; si carga todo bien y rápido, podés subirlo.
+//
+// Además: el mismo archivo puede aparecer más de una vez en la
+// pantalla (ej: la miniatura del slide y el mismo background dentro
+// del canvas). Usamos la URL del archivo como clave del cache, así
+// esos casos comparten un solo pedido en vez de contarse dos veces.
+// ============================================================
+const MAX_CONCURRENTES = 4;
+const DELAY_MIN_MS = 80;
+const DELAY_MAX_MS = 300;
+
+let _enCurso = 0;
+const _cola = [];
+
+const _delayAleatorio = () =>
+  new Promise((r) =>
+    setTimeout(r, DELAY_MIN_MS + Math.random() * (DELAY_MAX_MS - DELAY_MIN_MS)),
+  );
+
+const _procesarCola = () => {
+  if (_enCurso >= MAX_CONCURRENTES || _cola.length === 0) return;
+  const resolver = _cola.shift();
+  _enCurso++;
+  _delayAleatorio().then(resolver);
+};
+
+const pedirTurno = () =>
+  new Promise((resolve) => {
+    _cola.push(resolve);
+    _procesarCola();
+  });
+
+// Hay que llamarla cuando el <img>/<video> termina de cargar (@load /
+// @loadeddata) o falla (@error), para liberar el cupo y que arranque
+// el siguiente de la cola. Ya está integrada en logMediaOk/logMediaErr
+// de más abajo, no hace falta llamarla aparte desde el template.
+const liberarTurno = () => {
+  _enCurso = Math.max(0, _enCurso - 1);
+  _procesarCola();
+};
+
+// key -> src ya habilitado (o null mientras espera su turno en la cola)
+const mediaSrc = reactive({});
+
+// Se llama desde el :src del template. `key` identifica el archivo
+// (siempre la URL base, sin el "#t=0.1" que usan los videos) y
+// `srcToUse` es lo que efectivamente se pone en el src (para videos,
+// incluye el "#t=0.1"). Mientras no le toque turno devuelve null, así
+// el elemento queda sin src y el navegador no dispara el request.
+const cargarMedia = (key, srcToUse = key) => {
+  if (!key) return null;
+  if (mediaSrc[key] === srcToUse) return srcToUse;
+  if (!(key in mediaSrc)) {
+    mediaSrc[key] = null;
+    pedirTurno().then(() => {
+      mediaSrc[key] = srcToUse;
+    });
+  }
+  return mediaSrc[key];
+};
+
+// Para ver el estado de la cola en cualquier momento desde la consola:
+// window.tw2ismEstadoCola()
+window.tw2ismEstadoCola = () => ({
+  cargandoAhora: _enCurso,
+  esperandoTurno: _cola.length,
+  maxConcurrentes: MAX_CONCURRENTES,
+});
+
+// Reintentos automáticos: solo para errores que huelen a saturación
+// (network-error, 429, 502/503), no para 404/403, que casi seguro son
+// un problema real (archivo faltante o permisos) y no de ráfaga.
+const MAX_REINTENTOS = 2;
+const _reintentos = {};
+
+const _evaluarReintento = (label, url, status) => {
+  const parecePermanente = status === 404 || status === 403;
+  if (parecePermanente) {
+    console.error(
+      `   ↳ [${label}] no se reintenta: HTTP ${status} no es un problema de saturación, revisar si el archivo existe/permisos en el hosting.`,
+    );
+    return;
+  }
+  const intentos = _reintentos[url] || 0;
+  if (intentos >= MAX_REINTENTOS) {
+    console.error(`   ↳ [${label}] se agotaron los ${MAX_REINTENTOS} reintentos, se deja como error definitivo.`);
+    return;
+  }
+  _reintentos[url] = intentos + 1;
+  const espera = Math.round(800 * Math.pow(2, intentos) + Math.random() * 400);
+  console.warn(`   ↳ reintentando [${label}] en ~${espera}ms (intento ${intentos + 1}/${MAX_REINTENTOS})`);
+  setTimeout(() => {
+    delete mediaSrc[url]; // fuerza a volver a pedir turno en la cola
+  }, espera);
+};
+
+const logMediaOk = (label, filename) => {
+  _mediaOkCount++;
+  const url = `${UPLOADS_BASE}/${filename}`;
+  liberarTurno();
+  delete _reintentos[url]; // si venía de un reintento y ahora cargó, reseteamos el contador
+  window.tw2ismMediaLog.push({
+    ok: true,
+    label,
+    filename,
+    url,
+    at: new Date().toISOString(),
+  });
+  console.log(
+    `%c✅ cargó [${label}] (ok:${_mediaOkCount} / err:${_mediaErrCount})`,
+    "color:#00cc88",
+    url,
+  );
+};
+
+const logMediaErr = (label, filename) => {
+  _mediaErrCount++;
+  const url = `${UPLOADS_BASE}/${filename}`;
+  liberarTurno();
+  const entry = {
+    ok: false,
+    label,
+    filename,
+    url,
+    at: new Date().toISOString(),
+    status: null,
+  };
+  window.tw2ismMediaLog.push(entry);
+  console.error(
+    `❌ NO cargó [${label}] (ok:${_mediaOkCount} / err:${_mediaErrCount})`,
+    url,
+  );
+
+  // Diagnóstico extra: intentamos un fetch aparte a la misma URL solo
+  // para ver el status HTTP real (404 = el archivo no está en el
+  // hosting, 403 = permisos/bloqueo del servidor o WAF, etc.) o si
+  // directamente no hubo respuesta de red.
+  fetch(url, { method: "GET", cache: "no-store" })
+    .then((r) => {
+      entry.status = r.status;
+      console.error(
+        `   ↳ diagnóstico [${label}]: HTTP ${r.status}${r.statusText ? " " + r.statusText : ""}`,
+        url,
+      );
+      _evaluarReintento(label, url, r.status);
+    })
+    .catch((e) => {
+      entry.status = "network-error";
+      console.error(
+        `   ↳ diagnóstico [${label}]: fallo de red total, ni siquiera respondió el servidor`,
+        e.message,
+        url,
+      );
+      _evaluarReintento(label, url, "network-error");
+    });
+};
 
 let _draggingEl = null;
 let _draggingSlide = null;
@@ -527,6 +736,56 @@ const onCanvasDrop = (slide, event) => {
 
 const currentAudio = ref("");
 
+// ============================================================
+// apiCall — fetch centralizado.
+// Antes, un error de PHP (warning/notice antes del json_encode)
+// hacía que la respuesta fuera HTML en vez de JSON, y
+// `res.json()` reventaba con "Unexpected token '<'..." sin decir
+// nada útil. Ahora: leemos el texto crudo, intentamos parsear
+// JSON nosotros, y si falla mostramos ese texto crudo en consola
+// (para ver el error real de PHP) y mostramos un mensaje claro.
+// ============================================================
+const apiCall = async (context, url, options) => {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (e) {
+    console.error(`[${context}] Fallo de red / no se pudo conectar`, e.message);
+    throw new Error(`No se pudo conectar con el servidor (${context}).`);
+  }
+
+  const raw = await res.text();
+
+  if (!res.ok) {
+    console.error(`[${context}] HTTP ${res.status}`, raw.slice(0, 500));
+    throw new Error(`Error HTTP ${res.status} en ${context}. Ver consola.`);
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Firma típica de páginas de "challenge" anti-bot/WAF (Sucuri,
+    // DDoS-Guard, Cloudflare "under attack mode", BitNinja, etc.): la
+    // petición nunca llegó a PHP, el WAF la interceptó antes.
+    const esChallengeWAF = /toNumbers|aes\.js|jschl|cf-please-wait|checking your browser/i.test(
+      raw,
+    );
+
+    if (esChallengeWAF) {
+      console.error(
+        `[${context}] Bloqueado por protección anti-bot/WAF del hosting (no llegó a PHP)`,
+        raw.slice(0, 300),
+      );
+      throw new Error(
+        `El servidor bloqueó esta petición por su protección anti-bot (${context}). No es un error del código — avisá al hosting para que agreguen una excepción en el WAF para este endpoint.`,
+      );
+    }
+
+    console.error(`[${context}] El servidor no devolvió JSON válido (probable error PHP)`, raw.slice(0, 500));
+    throw new Error(`Respuesta inválida del servidor (${context}). Ver consola.`);
+  }
+};
+
 onMounted(() => {
   cargarSlides();
   cargarAudio();
@@ -534,57 +793,106 @@ onMounted(() => {
 
 const cargarAudio = async () => {
   try {
-    const res = await fetch(`${API_BASE}/get_audio.php`);
-    const data = await res.json();
+    const data = await apiCall("get_audio.php", `${API_BASE}/get_audio.php`);
     if (data.success) currentAudio.value = data.audio_url;
   } catch (e) {
-    console.error(e);
+    // no es crítico si no hay audio
   }
 };
 
 const scroller = ref([]);
-// let lasAlturas = ref(0);
-// let elTotal = (0);
+
+// Fuerza que height_vh sea siempre un múltiplo de 50, mínimo 100.
+// Nunca debe quedar un decimal ni un valor como 101 o 199.99.
+const clampAltura = (slide) => {
+  const original = slide.height_vh;
+  if (original == null || isNaN(original)) {
+    slide.height_vh = 100;
+    return;
+  }
+  const corregido = Math.max(100, Math.round(original / 50) * 50);
+  slide.height_vh = corregido;
+};
+
+// Igual que clampAltura, pero sin mutar el slide: devuelve el height_vh
+// "corregido" (múltiplo de 50, mínimo 100) para usar en cálculos.
+//
+// Por qué hacía falta esto: v-model.number del input de altura escribe
+// en slide.height_vh en CADA tecla que se tipea (evento "input"), no
+// solo cuando se confirma el valor (@change/@blur, que es cuando recién
+// se llama a clampAltura). Entonces, mientras el usuario está tipeando
+// —por ejemplo escribiendo "150" y pasando por "1", "15"— los totales,
+// que son reactivos, sumaban esos valores intermedios que NO son
+// múltiplos de 50. Sumar números como 1.15 o 0.01 en vez de 1 o 1.5 es
+// justamente lo que produce basura de precisión flotante en JS (el
+// mismo fenómeno de 0.1 + 0.2 !== 0.3), y ahí aparecían totales como
+// "23.9999" en vez de un número limpio.
+//
+// Al usar siempre esta versión "corregida" dentro de los totales, el
+// cálculo nunca ve un valor intermedio sin redondear, sin importar en
+// qué momento se está tipeando.
+const alturaCorregida = (height_vh) => {
+  const val = Number(height_vh);
+  if (height_vh == null || isNaN(val)) return 100;
+  return Math.max(100, Math.round(val / 50) * 50);
+};
 
 async function cargarSlides() {
   try {
-    const res = await fetch(`${API_BASE}/media.php`);
-    const data = await res.json();
+    const data = await apiCall("media.php", `${API_BASE}/media.php`);
 
-    scroller.value = data.slides.map(item =>({
+    // ============================================================
+    // DB completa visible en consola + accesible desde el DOM/consola
+    // como window.tw2ismDB (hacé click derecho > Store as global variable
+    // en devtools, o escribí "window.tw2ismDB" en la consola).
+    // ============================================================
+    console.log(`%c📦 media.php trajo ${data.slides?.length ?? 0} slides`, "color:#00ffcc;font-weight:bold");
+    console.log(data);
+    window.tw2ismDB = data;
+
+    scroller.value = (data.slides || []).map((item) => ({
       orden: item.orden,
-      altura: item.height_vh
-    })
-
-    );
-
+      altura: item.height_vh,
+    }));
 
     if (data.success) {
-      slides.value = data.slides.map((s) => ({
-        ...s,
-        active: s.active ?? true,
-        _open: false,
-        _nuevoEl: null,
-        _selectedEl: null,
-      }));
+      slides.value = data.slides
+        .slice()
+        .sort((a, b) => a.orden - b.orden)
+        .map((s) => {
+          const height_vh = Math.max(
+            100,
+            Math.round((s.height_vh ?? 100) / 50) * 50,
+          );
+          return {
+            ...s,
+            height_vh,
+            active: s.active ?? true,
+            _open: false,
+            _nuevoEl: null,
+            _selectedEl: null,
+          };
+        });
     }
   } catch (e) {
-    alert("Error cargando: " + e.message);
+    // ya quedó registrado en consola (ver apiCall)
   }
 }
 
+ // Redondeamos a 2 decimales para evitar el error de precisión de coma
+ // flotante en JS (ej: 0.1 + 0.2 !== 0.3), que hacía aparecer totales
+ // como "173.9998" en vez de "174". Además, ahora cada item pasa por
+ // alturaCorregida() antes de sumarse (ver comentario ahí arriba), que
+ // es la causa real de los "23.9999" intermitentes.
  const alturaTotal = computed(() => {
   let suma = 0;
-  let numSlide = 0;
-  
+
   slides.value.forEach(item => {
-      suma += item.height_vh/100;
-      numSlide = item.orden;
-      console.log("Al slide: " + numSlide + " van " + suma);
+      suma += alturaCorregida(item.height_vh) / 100;
     });
-   
-  return suma
-  
+
+  return Math.round(suma * 100) / 100;
+
  }); 
 
  // Mapa orden -> altura acumulada hasta ese slide (misma lógica del log de arriba)
@@ -595,69 +903,81 @@ async function cargarSlides() {
   const mapa = {};
 
   slides.value.forEach(item => {
-      suma += item.height_vh/100;
-      mapa[item.orden] = suma;
+      suma += alturaCorregida(item.height_vh) / 100;
+      mapa[item.orden] = Math.round(suma * 100) / 100;
     });
 
   return mapa;
  });
 
-//  const alturaTotal = computed(() => {
-//   return scroller.value.reduce((sum, item) => sum + Number(item.valor)/100,0)
-//  })
- 
-// document.getElementById("totalAltura").textContent = String(alturaTotal);
-
-
-
 const crearSlide = async () => {
   try {
-    const res = await fetch(`${API_BASE}/create_slide.php`, { method: "POST" });
-    const data = await res.json();
+    const data = await apiCall(
+      "create_slide.php",
+      `${API_BASE}/create_slide.php`,
+      { method: "POST" },
+    );
     if (data.success)
       slides.value.push({
         ...data.slide,
+        height_vh: Math.max(100, Math.round((data.slide.height_vh ?? 100) / 50) * 50),
         _open: true,
         _nuevoEl: null,
         _selectedEl: null,
       });
-    else alert("Error: " + data.error);
+    else {
+      console.error("[create_slide.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
 };
 
 const updateSlide = async (slide) => {
-  // para que el usuario sepa que algo está pasando, ya que a veces tarda un poco por la generación de thumbnails
+  // Forzamos que height_vh quede en un múltiplo de 50 antes de guardar.
+  clampAltura(slide);
+
   try {
-    await fetch(`${API_BASE}/update_slide.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: slide.id,
-        background: slide.background,
-        height_vh: slide.height_vh,
-        active: slide.active ? 1 : 0,
-        orden: slide.orden,
-      }),
-    });
-    toast("Slide guardado");
+    const data = await apiCall(
+      "update_slide.php",
+      `${API_BASE}/update_slide.php`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: slide.id,
+          background: slide.background,
+          height_vh: slide.height_vh,
+          active: slide.active ? 1 : 0,
+          orden: slide.orden,
+        }),
+      },
+    );
+    if (data.success) {
+      toast("Slide guardado");
+    } else {
+      console.error("[update_slide.php] Backend devolvió error", data.error);
+      toast(data.error || "No se pudo guardar el slide.", "error");
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    toast(e.message || "No se pudo guardar el slide.", "error");
   }
 };
 
 const deleteSlide = async (id) => {
   if (!confirm("¿Eliminar este slide y todos sus elementos?")) return;
   try {
-    const res = await fetch(`${API_BASE}/delete_slide.php?id=${id}`, {
-      method: "DELETE",
-    });
-    const data = await res.json();
+    const data = await apiCall(
+      "delete_slide.php",
+      `${API_BASE}/delete_slide.php?id=${id}`,
+      { method: "DELETE" },
+    );
     if (data.success) slides.value = slides.value.filter((s) => s.id !== id);
-    else alert("Error: " + data.error);
+    else {
+      console.error("[delete_slide.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
 };
 
@@ -672,13 +992,13 @@ const saveOrder = async () => {
 
   const orden = slides.value.map((s) => s.id);
   try {
-    await fetch(`${API_BASE}/save_order.php`, {
+    await apiCall("save_order.php", `${API_BASE}/save_order.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orden }),
     });
   } catch (e) {
-    console.error(e);
+    // no bloqueamos la UI por esto
   }
 };
 
@@ -689,48 +1009,64 @@ const uploadBackground = async (slide, event) => {
   fd.append("file", file);
   fd.append("slide_id", slide.id);
   try {
-    const res = await fetch(`${API_BASE}/upload_background.php`, {
-      method: "POST",
-      body: fd,
-    });
-    const data = await res.json();
+    const data = await apiCall(
+      "upload_background.php",
+      `${API_BASE}/upload_background.php`,
+      { method: "POST", body: fd },
+    );
     if (data.success) {
       slide.background = data.filename;
       await updateSlide(slide);
-    } else alert("Error: " + data.error);
+    } else {
+      console.error("[upload_background.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
   event.target.value = "";
 };
 
-const updateElemento = async (el) => {
+const _updateTimers = {};
+
+const updateElemento = (el) => {
+  clearTimeout(_updateTimers[el.id]);
+  _updateTimers[el.id] = setTimeout(() => guardarElemento(el), 600);
+};
+
+const guardarElemento = async (el) => {
   try {
-    // para que el usuario sepa que algo está pasando, ya que a veces tarda un poco
-    const res = await fetch(`${API_BASE}/update_elemento.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(el),
-    });
-    const data = await res.json();
-    if (!data.success) alert("Error: " + data.error);
+    const data = await apiCall(
+      "update_elemento.php",
+      `${API_BASE}/update_elemento.php`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(el),
+      },
+    );
+    if (!data.success) {
+      console.error("[update_elemento.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
 };
 
 const deleteElemento = async (slide, id) => {
   if (!confirm("¿Eliminar este elemento?")) return;
   try {
-    const res = await fetch(`${API_BASE}/delete_elemento.php?id=${id}`, {
-      method: "DELETE",
-    });
-    const data = await res.json();
+    const data = await apiCall(
+      "delete_elemento.php",
+      `${API_BASE}/delete_elemento.php?id=${id}`,
+      { method: "DELETE" },
+    );
     if (data.success)
       slide.elementos = slide.elementos.filter((e) => e.id !== id);
-    else alert("Error: " + data.error);
+    else {
+      console.error("[delete_elemento.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
 };
 
@@ -741,17 +1077,19 @@ const replaceElemento = async (el, event) => {
   fd.append("file", file);
   fd.append("id", el.id);
   try {
-    const res = await fetch(`${API_BASE}/replace_elemento.php`, {
-      method: "POST",
-      body: fd,
-    });
-    const data = await res.json();
+    const data = await apiCall(
+      "replace_elemento.php",
+      `${API_BASE}/replace_elemento.php`,
+      { method: "POST", body: fd },
+    );
     if (data.success) {
       el.filename = data.filename;
       el.type = data.type;
-    } else alert("Error: " + data.error);
+    } else {
+      console.error("[replace_elemento.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
   event.target.value = "";
 };
@@ -788,7 +1126,7 @@ const previewNuevoElemento = async (slide, event) => {
 const guardarNuevoElemento = async (slide) => {
   const el = slide._nuevoEl;
   if (!el.file) {
-    alert("Seleccioná un archivo primero");
+    toast("Seleccioná un archivo primero", "info");
     return;
   }
   toast("Subiendo...", "info");
@@ -805,48 +1143,62 @@ const guardarNuevoElemento = async (slide) => {
   fd.append("z_index", el.z_index);
   fd.append("sound_enabled", el.sound_enabled ? 1 : 0);
   try {
-    const res = await fetch(`${API_BASE}/create_elemento.php`, {
-      method: "POST",
-      body: fd,
-    });
-    const data = await res.json();
+    const data = await apiCall(
+      "create_elemento.php",
+      `${API_BASE}/create_elemento.php`,
+      { method: "POST", body: fd },
+    );
     if (data.success) {
+      // Aseguramos que el elemento quede con coordenadas numéricas sí o sí.
       const nuevo = {
         ...data.elemento,
         title: el.title,
         url: el.url,
         description: el.description,
+        pos_x: Number(data.elemento?.pos_x ?? el.pos_x),
+        pos_y: Number(data.elemento?.pos_y ?? el.pos_y),
+        width: Number(data.elemento?.width ?? el.width),
+        rotation: Number(data.elemento?.rotation ?? el.rotation),
+        z_index: Number(data.elemento?.z_index ?? el.z_index),
+        sound_enabled: Boolean(
+          data.elemento?.sound_enabled ?? el.sound_enabled,
+        ),
       };
       slide.elementos.push(nuevo);
       await updateElemento(nuevo);
+      if (el.previewUrl) URL.revokeObjectURL(el.previewUrl);
       slide._nuevoEl = null;
-    } else alert("Error: " + data.error);
+    } else {
+      console.error("[create_elemento.php] Backend devolvió error", data.error);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   }
 };
 
 const uploadAudio = async () => {
   if (!audioLink.value.trim()) {
-    alert("Ingresá un enlace");
+    toast("Ingresá un enlace", "info");
     return;
   }
   isUploading.value = true;
   try {
     const fd = new FormData();
     fd.append("audio_url", audioLink.value.trim());
-    const res = await fetch(`${API_BASE}/upload_audio.php`, {
-      method: "POST",
-      body: fd,
-    });
-    const data = await res.json();
+    const data = await apiCall(
+      "upload_audio.php",
+      `${API_BASE}/upload_audio.php`,
+      { method: "POST", body: fd },
+    );
     if (data.success) {
       currentAudio.value = audioLink.value.trim();
       toast("Audio guardado");
       audioLink.value = "";
-    } else alert("Error: " + data.message);
+    } else {
+      console.error("[upload_audio.php] Backend devolvió error", data.error || data.message);
+    }
   } catch (e) {
-    alert("Error: " + e.message);
+    // ya quedó registrado en consola
   } finally {
     isUploading.value = false;
   }
@@ -975,6 +1327,7 @@ const toast = (message, type = "success") => {
   cursor: pointer;
   border-radius: 3px;
   white-space: nowrap;
+  position: relative;
 }
 .btn-sm:hover {
   border-color: #00ffcc33;
@@ -1391,6 +1744,24 @@ const toast = (message, type = "success") => {
   border-radius: 3px;
 }
 
+/* TOTAL ALTURA */
+
+.total-altura {
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: padding 0.2s;
+}
+.total-altura.excedido {
+  padding: 4px 10px;
+  background: #ff4444;
+  color: #fff;
+  animation: pulse-excedido 1s infinite;
+}
+@keyframes pulse-excedido {
+  0%, 100% { box-shadow: 0 0 0 0 #ff444488; }
+  50% { box-shadow: 0 0 0 6px #ff444400; }
+}
+
 /* TOAST */
 
 .toast-container {
@@ -1412,21 +1783,5 @@ const toast = (message, type = "success") => {
 }
 .toast.info {
   background: #1a5276;
-}
-
-.total-altura {
-  padding: 0 4px;
-  border-radius: 3px;
-  transition: padding 0.2s;
-}
-.total-altura.excedido {
-  padding: 4px 10px;
-  background: #ff4444;
-  color: #fff;
-  animation: pulse-excedido 1s infinite;
-}
-@keyframes pulse-excedido {
-  0%, 100% { box-shadow: 0 0 0 0 #ff444488; }
-  50% { box-shadow: 0 0 0 6px #ff444400; }
 }
 </style>
